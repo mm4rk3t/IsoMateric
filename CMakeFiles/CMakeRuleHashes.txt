@@ -1,0 +1,2 @@
+# Hashes of file build rules.
+fb79319870b4074fab121eaa097cfa40 IsoMateric/vendor/glfw/CMakeFiles/uninstall

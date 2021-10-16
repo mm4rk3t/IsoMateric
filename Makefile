@@ -103,7 +103,7 @@ install/fast: preinstall/fast
 
 # Special rule for the target list_install_components
 list_install_components:
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "Available install components are: \"Unspecified\""
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "Available install components are: \"Unspecified\" \"assimp-dev\" \"libassimp5.0.1-dev\""
 .PHONY : list_install_components
 
 # Special rule for the target list_install_components
@@ -199,6 +199,19 @@ glfw: cmake_check_build_system
 glfw/fast:
 	$(MAKE) $(MAKESILENT) -f IsoMateric/vendor/glfw/src/CMakeFiles/glfw.dir/build.make IsoMateric/vendor/glfw/src/CMakeFiles/glfw.dir/build
 .PHONY : glfw/fast
+
+#=============================================================================
+# Target rules for targets named assimp
+
+# Build rule for target.
+assimp: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 assimp
+.PHONY : assimp
+
+# fast build rule for target.
+assimp/fast:
+	$(MAKE) $(MAKESILENT) -f IsoMateric/vendor/assimp/code/CMakeFiles/assimp.dir/build.make IsoMateric/vendor/assimp/code/CMakeFiles/assimp.dir/build
+.PHONY : assimp/fast
 
 IsoMateric/src/application.o: IsoMateric/src/application.cpp.o
 .PHONY : IsoMateric/src/application.o
@@ -382,6 +395,7 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... uninstall"
 	@echo "... IsoMateric"
+	@echo "... assimp"
 	@echo "... glfw"
 	@echo "... IsoMateric/src/application.o"
 	@echo "... IsoMateric/src/application.i"

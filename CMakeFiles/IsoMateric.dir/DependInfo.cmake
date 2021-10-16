@@ -19,6 +19,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
 
 # Targets to which this target links.
 set(CMAKE_TARGET_LINKED_INFO_FILES
+  "/home/mm4rk3t/IsoMateric/IsoMateric/vendor/assimp/code/CMakeFiles/assimp.dir/DependInfo.cmake"
   "/home/mm4rk3t/IsoMateric/IsoMateric/vendor/glfw/src/CMakeFiles/glfw.dir/DependInfo.cmake"
   )
 

@@ -7,11 +7,18 @@ option(GLFW_BUILD_EXAMPLES OFF)
 option(GLFW_BUILD_TESTS OFF)
 add_subdirectory(IsoMateric/vendor/glfw)
 
+# set assimp parameters
+option(ASSIMP_BUILD_ASSIMP_TOOLS OFF)
+option(ASSIMP_BUILD_SAMPLES OFF)
+option(ASSIMP_BUILD_TESTS OFF)
+add_subdirectory(IsoMateric/vendor/assimp)
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -std=c++11 -lfreetype")
 set(GLAD_LIBRARIES dl)
 
 # include directories
 include_directories(
+	IsoMateric/vendor/assimp/include/
         IsoMateric/vendor/glad/include/
         IsoMateric/vendor/glfw/include/
         IsoMateric/vendor/glm/
@@ -48,6 +55,7 @@ add_executable(IsoMateric IsoMateric/vendor/glad/src/glad.c ${SOURCE_EXECUTABLES
 # set libraries (if using at all)
 target_link_libraries(
 	IsoMateric 
+	assimp 
 	glfw
 	${GLFW_LIBRARIES}
 	${GLAD_LIBRARIES}

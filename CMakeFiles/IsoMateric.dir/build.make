@@ -188,7 +188,9 @@ IsoMateric/bin/IsoMateric: CMakeFiles/IsoMateric.dir/IsoMateric/src/resourceMana
 IsoMateric/bin/IsoMateric: CMakeFiles/IsoMateric.dir/IsoMateric/src/shader.cpp.o
 IsoMateric/bin/IsoMateric: CMakeFiles/IsoMateric.dir/IsoMateric/src/texture.cpp.o
 IsoMateric/bin/IsoMateric: CMakeFiles/IsoMateric.dir/build.make
+IsoMateric/bin/IsoMateric: IsoMateric/vendor/assimp/lib/libassimp.a
 IsoMateric/bin/IsoMateric: IsoMateric/vendor/glfw/src/libglfw3.a
+IsoMateric/bin/IsoMateric: /usr/lib/libz.so
 IsoMateric/bin/IsoMateric: /usr/lib/librt.so
 IsoMateric/bin/IsoMateric: /usr/lib/libm.so
 IsoMateric/bin/IsoMateric: CMakeFiles/IsoMateric.dir/link.txt

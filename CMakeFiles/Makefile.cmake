@@ -11,6 +11,16 @@ set(CMAKE_MAKEFILE_DEPENDS
   "CMakeFiles/3.21.3/CMakeCXXCompiler.cmake"
   "CMakeFiles/3.21.3/CMakeSystem.cmake"
   "CMakeLists.txt"
+  "IsoMateric/vendor/assimp/CMakeLists.txt"
+  "IsoMateric/vendor/assimp/assimp.pc.in"
+  "IsoMateric/vendor/assimp/cmake-modules/FindPkgMacros.cmake"
+  "IsoMateric/vendor/assimp/cmake-modules/FindRT.cmake"
+  "IsoMateric/vendor/assimp/cmake-modules/FindZLIB.cmake"
+  "IsoMateric/vendor/assimp/cmake-modules/PrecompiledHeader.cmake"
+  "IsoMateric/vendor/assimp/cmake/assimp-plain-config.cmake.in"
+  "IsoMateric/vendor/assimp/code/CMakeLists.txt"
+  "IsoMateric/vendor/assimp/include/assimp/config.h.in"
+  "IsoMateric/vendor/assimp/revision.h.in"
   "IsoMateric/vendor/glfw/CMake/cmake_uninstall.cmake.in"
   "IsoMateric/vendor/glfw/CMake/glfw3.pc.in"
   "IsoMateric/vendor/glfw/CMake/glfw3Config.cmake.in"
@@ -70,6 +80,13 @@ set(CMAKE_MAKEFILE_PRODUCTS
   "IsoMateric/vendor/glfw/CMakeFiles/CMakeDirectoryInformation.cmake"
   "IsoMateric/vendor/glfw/src/glfw_config.h"
   "IsoMateric/vendor/glfw/src/CMakeFiles/CMakeDirectoryInformation.cmake"
+  "IsoMateric/vendor/assimp/revision.h"
+  "IsoMateric/vendor/assimp/include/assimp/config.h"
+  "IsoMateric/vendor/assimp/generated/assimpConfigVersion.cmake"
+  "IsoMateric/vendor/assimp/generated/assimpConfig.cmake"
+  "IsoMateric/vendor/assimp/assimp.pc"
+  "IsoMateric/vendor/assimp/CMakeFiles/CMakeDirectoryInformation.cmake"
+  "IsoMateric/vendor/assimp/code/CMakeFiles/CMakeDirectoryInformation.cmake"
   )
 
 # Dependency information for all targets:
@@ -77,4 +94,5 @@ set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/IsoMateric.dir/DependInfo.cmake"
   "IsoMateric/vendor/glfw/CMakeFiles/uninstall.dir/DependInfo.cmake"
   "IsoMateric/vendor/glfw/src/CMakeFiles/glfw.dir/DependInfo.cmake"
+  "IsoMateric/vendor/assimp/code/CMakeFiles/assimp.dir/DependInfo.cmake"
   )

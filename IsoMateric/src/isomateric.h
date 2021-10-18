@@ -1,6 +1,9 @@
 #ifndef ISOMATERIC_H
 #define ISOMATERIC_H
 
+#include "camera.h"
+#include <vector>
+
 enum State
 {
 	ACTIVE,
@@ -16,7 +19,7 @@ public:
 
 	// game loop
 	void init();
-	void handleInput(float dt);
+	void handleInput();
 	void update(float dt);
 	void render();
 
@@ -24,10 +27,7 @@ public:
 	unsigned int width, height;
 	State state;
 	bool keys[1024];
-
-	// TEST ONLY DELETE AFTER!!!
-	unsigned int vao;
-
+	bool keysProcessed[1024];
 };
 
 #endif

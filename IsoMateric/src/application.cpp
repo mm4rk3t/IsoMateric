@@ -60,11 +60,15 @@ int main()
 		float currentFrame = glfwGetTime();
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
+		
+		game.handleInput();
 
 		game.update(deltaTime);
 		glfwPollEvents();
+		
+		glEnable(GL_DEPTH_TEST);
 		glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		game.render();
 		glfwSwapBuffers(window);
 	}
@@ -79,7 +83,7 @@ void frame_buffer_size_callback(GLFWwindow* window, int width, int height)
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode)
 {
 	
-	if (key == GLFW_KEY_Q && action == GLFW_PRESS)
+	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, true);
 
 	if(key >= 0 && key < 1024)
@@ -87,6 +91,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 		if (action == GLFW_PRESS)
 			game.keys[key] = true;
 		else if (action == GLFW_RELEASE)
+		{
 			game.keys[key] = false;
+			game.keysProcessed[key] = false;
+		}
 	}
+	std::cout << key << std::endl;
 }

@@ -36,6 +36,7 @@ set(
 	IsoMateric/src/resourceManager.cpp
 	IsoMateric/src/shader.cpp
 	IsoMateric/src/texture.cpp
+	IsoMateric/src/camera.cpp
 	)
 
 
@@ -47,6 +48,7 @@ set(
 	IsoMateric/src/resourceManager.h
 	IsoMateric/src/shader.h
 	IsoMateric/src/texture.h
+	IsoMateric/src/camera.h
 	)
 
 # join everything

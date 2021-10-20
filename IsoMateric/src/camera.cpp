@@ -18,8 +18,8 @@ glm::mat4 Camera::getView()
 glm::mat4 Camera::getProjection()
 {
 
-       	float orthoX = (float)((this->width / 2) / this->zoom);
-       	float orthoY = (float)((this->height / 2) / this->zoom);
-	glm::mat4 projection = glm::ortho(-orthoX, orthoX, -orthoY, orthoY, 0.1f, 100.0f);
+       	float orthoX = ((float)(this->width) / this->zoom) / 2.0f;
+       	float orthoY = ((float)(this->height) / this->zoom) / 2.0f;
+	glm::mat4 projection = glm::ortho(-orthoX, orthoX, -orthoY, orthoY, -100.0f, 100.0f);
 	return projection;
 }

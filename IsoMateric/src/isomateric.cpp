@@ -20,6 +20,8 @@ Renderer* renderer;
 Shader shader;
 Camera* camera;
 
+float glfwTime = 0.0f;
+
 // game loop
 void IsoMateric::init()
 {
@@ -78,6 +80,7 @@ void IsoMateric::handleInput()
 
 }
 
+
 void IsoMateric::update(float dt)
 {
 	// camera
@@ -89,13 +92,18 @@ void IsoMateric::update(float dt)
 	shader.setMat4("view", view);
 	shader.setMat4("projection", projection);
 
+	// TEST
+	glfwTime = (float)glfwGetTime();
+	std::cout << glfwTime << std::endl;
+
 }
 
 void IsoMateric::render()
 {
+
 	glm::vec3 floor = glm::vec3(0.0f, -1.0f, 0.0f);
 	renderer->draw(floor, glm::vec3(10.0f, 1.0f, 10.0f), 0.0f, glm::vec3(0.0f, 1.0f, 0.0f));
 
-	glm::vec3 block = glm::vec3((float)glfwGetTime() * 0.2, 0.0f, -4.5);
+	glm::vec3 block = glm::vec3(glfwTime * 0.2, 0.0f, 0.0f);
 	renderer->draw(block, glm::vec3(1.0f, 1.0f, 1.0f), 0.0f, glm::vec3(1.0f, 1.0f, 0.0f));
 }

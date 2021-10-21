@@ -23,6 +23,8 @@ include_directories(
         IsoMateric/vendor/glfw/include/
         IsoMateric/vendor/glm/
         IsoMateric/vendor/stb/
+	IsoMateric/vendor/imgui/
+	IsoMateric/vendor/imgui/backends
 	/usr/include/freetype2
 	)
 
@@ -37,6 +39,16 @@ set(
 	IsoMateric/src/shader.cpp
 	IsoMateric/src/texture.cpp
 	IsoMateric/src/camera.cpp
+
+	# imgui
+	IsoMateric/vendor/imgui/imgui.cpp
+  	IsoMateric/vendor/imgui/imgui_demo.cpp
+  	IsoMateric/vendor/imgui/imgui_draw.cpp
+  	IsoMateric/vendor/imgui/imgui_tables.cpp
+	IsoMateric/vendor/imgui/imgui_widgets.cpp
+	IsoMateric/vendor/imgui/backends/imgui_impl_opengl3.cpp
+	IsoMateric/vendor/imgui/backends/imgui_impl_glfw.cpp
+	
 	)
 
 

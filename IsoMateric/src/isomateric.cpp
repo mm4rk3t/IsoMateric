@@ -7,6 +7,10 @@
 #include <glm/glm.hpp>
 #include <GLFW/glfw3.h>
 
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_glfw.h>
+
 #include <iostream>
 #include <vector>
 
@@ -21,6 +25,7 @@ Shader shader;
 Camera* camera;
 
 float glfwTime = 0.0f;
+glm::vec3 playerPos = {};
 
 // game loop
 void IsoMateric::init()
@@ -49,7 +54,7 @@ void IsoMateric::handleInput()
 			camera->zoom = 10;
 		else
 			camera->zoom--;
-		this->keysProcessed[47] == true;
+		this->keysProcessed[47] = true;
 	}
 	if(this->keys[93] && !this->keysProcessed[93]) //plus
 	{
@@ -57,7 +62,7 @@ void IsoMateric::handleInput()
 			camera->zoom = 90;
 		else
 			camera->zoom++;
-		this->keysProcessed[93] == true;
+		this->keysProcessed[93] = true;
 	}
 
 	if(this->keys[GLFW_KEY_Q] && !this->keysProcessed[GLFW_KEY_Q])
@@ -83,6 +88,9 @@ void IsoMateric::handleInput()
 
 void IsoMateric::update(float dt)
 {
+	// camera position
+	camera->viewpoint = playerPos;
+
 	// camera
 	glm::mat4 view = camera->getView();
 	glm::mat4 projection = camera->getProjection();
@@ -92,10 +100,8 @@ void IsoMateric::update(float dt)
 	shader.setMat4("view", view);
 	shader.setMat4("projection", projection);
 
-	// TEST
+	// time
 	glfwTime = (float)glfwGetTime();
-	std::cout << glfwTime << std::endl;
-
 }
 
 void IsoMateric::render()
@@ -103,7 +109,20 @@ void IsoMateric::render()
 
 	glm::vec3 floor = glm::vec3(0.0f, -1.0f, 0.0f);
 	renderer->draw(floor, glm::vec3(10.0f, 1.0f, 10.0f), 0.0f, glm::vec3(0.0f, 1.0f, 0.0f));
+	renderer->draw(playerPos, glm::vec3(1.0f, 1.0f, 1.0f), 0.0f, glm::vec3(1.0f, 1.0f, 0.0f));
+}
 
-	glm::vec3 block = glm::vec3(glfwTime * 0.2, 0.0f, 0.0f);
-	renderer->draw(block, glm::vec3(1.0f, 1.0f, 1.0f), 0.0f, glm::vec3(1.0f, 1.0f, 0.0f));
+void IsoMateric::ui()
+{
+		// starting frame
+                ImGui_ImplOpenGL3_NewFrame();
+                ImGui_ImplGlfw_NewFrame();
+                ImGui::NewFrame();
+                
+		// the juice
+           	ImGui::SliderFloat3("playerPos", &playerPos.x, -5.0f, 5.0f);
+
+		// ending frame
+                ImGui::Render();
+                ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }

@@ -22,6 +22,7 @@ public:
 	void handleInput();
 	void update(float dt);
 	void render();
+	void ui();
 
 	// members
 	unsigned int width, height;

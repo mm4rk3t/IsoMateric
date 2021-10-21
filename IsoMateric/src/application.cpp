@@ -8,6 +8,11 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include <imgui.h>
+
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_glfw.h>
+
 // variables
 const unsigned int SCR_W = 800;
 const unsigned int SCR_H = 600; 
@@ -25,7 +30,8 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	glfwWindowHint(GLFW_RESIZABLE, false);
+	glfwWindowHint(GLFW_RESIZABLE, true);
+	glfwWindowHint(GLFW_SAMPLES, 8);
 	
 	GLFWwindow* window = glfwCreateWindow(SCR_W, SCR_H, "IsoMateric v0.0.1", nullptr, nullptr);
 	if(window == nullptr)
@@ -46,6 +52,14 @@ int main()
 	// set viewport
 	glViewport(0, 0, SCR_W, SCR_H);
 	
+	// imgui
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	ImGui::StyleColorsDark();
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+	ImGui_ImplOpenGL3_Init("#version 330");
+
 	// init state
 	game.init();
 
@@ -62,18 +76,29 @@ int main()
 		lastFrame = currentFrame;
 		
 		game.handleInput();
-
 		game.update(deltaTime);
-		glfwPollEvents();
-		
-		glEnable(GL_DEPTH_TEST);
-		glDisable(GL_CULL_FACE);
 
+		glfwPollEvents();
 		glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		
+		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_MULTISAMPLE);	
+	
+		glDisable(GL_CULL_FACE);
+		
 		game.render();
+		game.ui();		
+		
 		glfwSwapBuffers(window);
 	}
+
+	ImGui_ImplOpenGL3_Shutdown();
+    	ImGui_ImplGlfw_Shutdown();
+    	ImGui::DestroyContext();
+
+	glfwDestroyWindow(window);
+    	glfwTerminate();
 
 	return 0;
 }

@@ -196,33 +196,32 @@ void IsoMateric::ui()
 
 			for (int unsigned i = 0; i < this->lights.size(); i++)
 			{
-
+				
 				std::string index = std::to_string(i);
 				
-				if(ImGui::CollapsingHeader(("light" + index).c_str()))
-				{
-					ImGui::Dummy(ImVec2(0.0f, 0.0f));
-					std::string position_tag = "light_pos" + index;
-					ImGui::SliderFloat3(position_tag.c_str(), &this->lights[i]->position.x, -20.0f, 20.0f);
-				
-					std::string color_tag = "light_col" + index;
-					ImGui::SliderFloat3(color_tag.c_str(), &this->lights[i]->color.x, 0.0f, 1.0f);
-	
-					std::string intensity_tag = "light_int" + index;
-					ImGui::SliderFloat(intensity_tag.c_str(), &this->lights[i]->intensity, 0.0f, 1.0f);
-				
-					std::string button_tag = "del_light" + index;
-			
-					if(ImGui::Button(button_tag.c_str()))
-					{
-						std::vector<Light*>::iterator it;
-						it = this->lights.begin();
-						this->lights.erase(it + i);
-					}
-
 				ImGui::Dummy(ImVec2(0.0f, 0.0f));
+				ImGui::Text(("light" + index).c_str());
+					
+				ImGui::Dummy(ImVec2(0.0f, 0.0f));
+				std::string position_tag = "light_pos" + index;
+				ImGui::SliderFloat3(position_tag.c_str(), &this->lights[i]->position.x, -20.0f, 20.0f);
+				
+				std::string color_tag = "light_col" + index;
+				ImGui::SliderFloat3(color_tag.c_str(), &this->lights[i]->color.x, 0.0f, 1.0f);
+	
+				std::string intensity_tag = "light_int" + index;
+				ImGui::SliderFloat(intensity_tag.c_str(), &this->lights[i]->intensity, 0.0f, 1.0f);
+				
+				std::string button_tag = "del_light" + index;
 			
+				if(ImGui::Button(button_tag.c_str()))
+				{
+					std::vector<Light*>::iterator it;
+					it = this->lights.begin();
+					this->lights.erase(it + i);
 				}
+					
+				ImGui::Dummy(ImVec2(0.0f, 0.0f));
 			}	
 
 		ImGui::Dummy(ImVec2(0.0f, 0.0f));

@@ -13,7 +13,7 @@ public:
 	glm::mat4 getProjection();
 	
 	float zoom, width, height;
-	glm::vec3 viewpoint;
+	glm::vec3 position, viewpoint;
 
 	unsigned int positionIndex = 0;
 	glm::vec3 positionOffsets[4]

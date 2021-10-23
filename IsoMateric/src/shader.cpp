@@ -70,6 +70,19 @@ void Shader::checkCompileErrors(unsigned int object, std::string type)
 	}
 }
 
+void Shader::setInt(const char* name, int& value, bool useShader)
+{
+	if(useShader)
+		this->use();
+	glUniform1i(glGetUniformLocation(this->id, name), value);
+}
+
+void Shader::setFloat(const char* name, float& value, bool useShader)
+{
+	if(useShader)
+		this->use();
+	glUniform1f(glGetUniformLocation(this->id, name), value);
+}
 
 void Shader::setVec3f(const char* name, glm::vec3& value, bool useShader)
 {

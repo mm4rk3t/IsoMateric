@@ -14,8 +14,8 @@
 #include <imgui_impl_glfw.h>
 
 // variables
-const unsigned int SCR_W = 800;
-const unsigned int SCR_H = 600; 
+const unsigned int SCR_W = 1280;
+const unsigned int SCR_H = 720; 
 
 IsoMateric game(SCR_W, SCR_H);
 
@@ -79,7 +79,7 @@ int main()
 		game.update(deltaTime);
 
 		glfwPollEvents();
-		glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
+		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
 		glEnable(GL_DEPTH_TEST);

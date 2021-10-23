@@ -14,6 +14,8 @@ public:
 	void checkCompileErrors(unsigned int object, std::string type);
 	unsigned int id;
 
+	void setInt(const char* name, int& value, bool useShader = false);
+	void setFloat(const char* name, float& value, bool useShader = false);
 	void setVec3f(const char* name, glm::vec3& value, bool useShader = false);
 	void setMat4(const char* name, glm::mat4& matrix, bool useShader = false);
 };

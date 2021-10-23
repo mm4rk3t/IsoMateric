@@ -10,8 +10,8 @@ Camera::Camera(glm::vec3 viewpoint, float width, float height, float zoom)
 
 glm::mat4 Camera::getView()
 {
-
-	glm::mat4 view = glm::lookAt(this->viewpoint + this->positionOffsets[this->positionIndex], this->viewpoint, glm::vec3(0.0f, 1.0f, 0.0f));
+	this->position = this->viewpoint + this->positionOffsets[this->positionIndex];
+	glm::mat4 view = glm::lookAt(this->position, this->viewpoint, glm::vec3(0.0f, 1.0f, 0.0f));
 	return view;
 }
 

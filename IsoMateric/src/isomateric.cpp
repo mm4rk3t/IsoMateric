@@ -38,7 +38,7 @@ bool lockCamera = false;
 // game loop
 void IsoMateric::init()
 {
-	// resources
+	// resources - relative to the path of the binary
 	ResourceManager::loadShader("/home/mm4rk3t/IsoMateric/IsoMateric/assets/shaders/flat_color.vs", "/home/mm4rk3t/IsoMateric/IsoMateric/assets/shaders/flat_color.fs", nullptr, "flat_color");	
 	ResourceManager::loadShader("/home/mm4rk3t/IsoMateric/IsoMateric/assets/shaders/light.vs", "/home/mm4rk3t/IsoMateric/IsoMateric/assets/shaders/light.fs", nullptr, "light");	
 	
@@ -56,15 +56,15 @@ void IsoMateric::init()
 
 	// lighting
 	
-	Light* light0 = new Light(glm::vec3(-3.75f, -0.25f, -3.75f), glm::vec3(1.0f, 0.0f, 0.0f), 1.0f);
+	Light* light0 = new Light(glm::vec3( 0.0f,   7.0f,   0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 1.0f);
 	Light* light1 = new Light(glm::vec3(-3.75f, -0.25f,  3.75f), glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
 	Light* light2 = new Light(glm::vec3( 3.75f, -0.25f, -3.75f), glm::vec3(0.0f, 0.0f, 1.0f), 1.0f);
 	Light* light3 = new Light(glm::vec3( 3.75f, -0.25f,  3.75f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
 	
 	this->lights.push_back(light0);
-	this->lights.push_back(light1);
-	this->lights.push_back(light2);
-	this->lights.push_back(light3);
+	//this->lights.push_back(light1);
+	//this->lights.push_back(light2);
+	//this->lights.push_back(light3);
 	
 }
 
@@ -164,16 +164,41 @@ void IsoMateric::update(float dt)
 	lightShader.setMat4("projection", projection);
 }
 
+
+// terrain
+const int MAX_CHUNK_X = 5;
+const int MAX_CHUNK_Z = 5;
+
+float centerX = MAX_CHUNK_X / 2;
+float centerZ = MAX_CHUNK_Z / 2;
+
+int terrain[MAX_CHUNK_X][MAX_CHUNK_Z] = {
+	2, 1, 1, 1, 2, 
+	1, 5, 3, 5, 1,
+	1, 2, 6, 2, 1,
+	1, 5, 4, 5, 1, 
+	2, 1, 1, 1, 2
+};
+
 void IsoMateric::render()
 {
-
-	glm::vec3 floor = glm::vec3(0.0f, -1.0f, 0.0f);
-	renderer->draw(floor, glm::vec3(20.0f, 1.0f, 20.0f), 0.0f, glm::vec3(0.0f, 1.0f, 0.0f));
 	renderer->draw(playerPos, glm::vec3(1.0f, 1.0f, 1.0f), 0.0f, glm::vec3(1.0f, 1.0f, 0.0f));
 
 	for(unsigned int i = 0; i < this->lights.size(); i++)
 	{
 		lightRenderer->draw(this->lights[i]->position, glm::vec3(0.5f, 0.5f, 0.5), 0.0f, this->lights[i]->color);
+	}
+	
+	// terrain
+	for (int x = 0; x < 5; x++)
+	{
+		for (int z = 0; z < 5; z++)
+		{
+			for (int y = 0; y < terrain[x][z]; y++)	
+			{
+				renderer->draw(glm::vec3(float(x) - centerX, y, float(z) - centerZ), glm::vec3(1.0f, 1.0f, 1.0f), 0.0f, glm::vec3(1.0f, 1.0f, 0.0f));
+			}
+		}
 	}
 
 }

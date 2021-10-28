@@ -56,16 +56,9 @@ void IsoMateric::init()
 
 	// lighting
 	
-	Light* light0 = new Light(glm::vec3( 0.0f,   7.0f,   0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 1.0f);
-	Light* light1 = new Light(glm::vec3(-3.75f, -0.25f,  3.75f), glm::vec3(0.0f, 1.0f, 0.0f), 1.0f);
-	Light* light2 = new Light(glm::vec3( 3.75f, -0.25f, -3.75f), glm::vec3(0.0f, 0.0f, 1.0f), 1.0f);
-	Light* light3 = new Light(glm::vec3( 3.75f, -0.25f,  3.75f), glm::vec3(1.0f, 1.0f, 1.0f), 1.0f);
+	Light* light0 = new Light(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.3f, 0.4f, 0.5f), 1.0f);
 	
 	this->lights.push_back(light0);
-	//this->lights.push_back(light1);
-	//this->lights.push_back(light2);
-	//this->lights.push_back(light3);
-	
 }
 
 void IsoMateric::handleInput()
@@ -166,18 +159,19 @@ void IsoMateric::update(float dt)
 
 
 // terrain
-const int MAX_CHUNK_X = 5;
-const int MAX_CHUNK_Z = 5;
+const int MAX_CHUNK_X = 7;
+const int MAX_CHUNK_Z = 7;
 
 float centerX = MAX_CHUNK_X / 2;
 float centerZ = MAX_CHUNK_Z / 2;
 
 int terrain[MAX_CHUNK_X][MAX_CHUNK_Z] = {
-	2, 1, 1, 1, 2, 
-	1, 5, 3, 5, 1,
-	1, 2, 6, 2, 1,
-	1, 5, 4, 5, 1, 
-	2, 1, 1, 1, 2
+	1, 1, 1, 1, 1, 1, 1, 
+	1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 
+	1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1
 };
 
 void IsoMateric::render()
@@ -212,10 +206,26 @@ void IsoMateric::ui()
                 ImGui_ImplGlfw_NewFrame();
                 ImGui::NewFrame();
                 
+		// camera
 		ImGui::Checkbox("lock camera (t)", &lockCamera);
-	
-		ImGui::Dummy(ImVec2(0.0f, 0.0f));
 
+		ImGui::Text("* rotate right (e) and left (q)\n* go up (lshift) and down (lctrl)");
+
+		ImGui::Text("camera->position");
+		ImGui::Text("\tx: %f", camera->position.x);
+		ImGui::Text("\ty: %f", camera->position.y);
+		ImGui::Text("\tz: %f", camera->position.z);
+		
+		ImGui::Text("camera->viewpoint");
+		ImGui::Text("\tx: %f", camera->viewpoint.x);
+		ImGui::Text("\ty: %f", camera->viewpoint.y);
+		ImGui::Text("\tz: %f", camera->viewpoint.z);
+		
+
+		ImGui::Text("zoom: %f", camera->zoom);
+		ImGui::Text("positionIndex: %i", camera->positionIndex);
+
+		// lights
 		if(ImGui::CollapsingHeader("lights"))
 		{
 
@@ -224,10 +234,8 @@ void IsoMateric::ui()
 				
 				std::string index = std::to_string(i);
 				
-				ImGui::Dummy(ImVec2(0.0f, 0.0f));
 				ImGui::Text(("light" + index).c_str());
 					
-				ImGui::Dummy(ImVec2(0.0f, 0.0f));
 				std::string position_tag = "light_pos" + index;
 				ImGui::SliderFloat3(position_tag.c_str(), &this->lights[i]->position.x, -20.0f, 20.0f);
 				
@@ -246,11 +254,8 @@ void IsoMateric::ui()
 					this->lights.erase(it + i);
 				}
 					
-				ImGui::Dummy(ImVec2(0.0f, 0.0f));
 			}	
 
-		ImGui::Dummy(ImVec2(0.0f, 0.0f));
-		
 		if(ImGui::Button("add"))
 			this->lights.push_back(new Light());
 		}

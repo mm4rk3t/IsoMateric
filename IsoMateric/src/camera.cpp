@@ -23,3 +23,19 @@ glm::mat4 Camera::getProjection()
 	glm::mat4 projection = glm::ortho(-orthoX, orthoX, -orthoY, orthoY, -100.0f, 100.0f);
 	return projection;
 }
+
+glm::vec3 Camera::getForward()
+{
+	switch (this->positionIndex)
+	{
+		case 0:
+			return glm::vec3(1.0f, 0.0f, -1.0f); 
+	
+		case 1:
+			return glm::vec3(1.0f, 0.0f, 1.0f); 
+		case 2:
+			return glm::vec3(-1.0f, 0.0f, 1.0f); 
+		case 3:
+			return glm::vec3(-1.0f, 0.0f, -1.0f); 
+	}
+}

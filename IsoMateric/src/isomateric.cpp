@@ -14,6 +14,14 @@
 #include <iostream>
 #include <vector>
 
+struct Player
+{
+	glm::vec3 position = glm::vec3(0.0f, 1.0f, 0.0f);
+	glm::vec3 size = glm::vec3(0.5f, 1.0f, 0.5f);
+	glm::vec3 color = glm::vec3(1.0f, 0.0f, 0.0f);
+	float speed = 0.075;
+} player;
+
 // constructor and destructor
 IsoMateric::IsoMateric(unsigned int width, unsigned int height)
 	: width(width), height(height), state(ACTIVE), keys(){ }
@@ -35,6 +43,35 @@ glm::vec3 playerPos(0.0f, 0.0f, 0.0f);
 bool showDebug = true;
 bool lockCamera = false;
 
+// terrain
+const int MAX_CHUNK_X = 16;
+const int MAX_CHUNK_Z = 16;
+
+float centerX = MAX_CHUNK_X / 2;
+float centerZ = MAX_CHUNK_Z / 2;
+
+int terrain[MAX_CHUNK_X][MAX_CHUNK_Z] = {
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 4, 2, 3, 2, 3, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1  
+
+};
+
+std::vector<glm::vec3> collidePositions;
+
 // game loop
 void IsoMateric::init()
 {
@@ -55,10 +92,22 @@ void IsoMateric::init()
 	camera = new Camera(viewPoint, this->width, this->height, 45.0f);
 
 	// lighting
-	
-	Light* light0 = new Light(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.3f, 0.4f, 0.5f), 1.0f);
-	
+	Light* light0 = new Light(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.3f, 0.4f, 0.5f), 1.0f);	
 	this->lights.push_back(light0);
+
+	// terrain
+	for (int x = 0; x < MAX_CHUNK_X; x++)
+	{
+		for (int z = 0; z < MAX_CHUNK_Z; z++)
+		{
+			for (int y = 0; y < terrain[x][z]; y++)	
+			{
+				if(terrain[x][z] > 2)
+					collidePositions.push_back(glm::vec3(float(x) - centerX, y, float(z) - centerZ));
+			}
+		}
+	}
+
 }
 
 void IsoMateric::handleInput()
@@ -90,6 +139,26 @@ void IsoMateric::handleInput()
 		camera->viewpoint.y++;
 	}
 
+	if(this->keys[GLFW_KEY_W])
+	{
+		player.position += camera->getForward() * player.speed;
+	}
+
+	if(this->keys[GLFW_KEY_S])
+	{
+		player.position -= camera->getForward() * player.speed;
+	}
+
+	if(this->keys[GLFW_KEY_D])
+	{
+		player.position += glm::cross(camera->getForward(), glm::vec3(0.0f, 1.0f, 0.0f)) * player.speed;
+	}
+
+	if(this->keys[GLFW_KEY_A])
+	{
+		player.position -= glm::cross(camera->getForward(), glm::vec3(0.0f, 1.0f, 0.0f)) * player.speed;
+	}
+
 	if(this->keys[GLFW_KEY_T] && !this->keysProcessed[GLFW_KEY_T])
 	{
 		lockCamera = !lockCamera;
@@ -103,6 +172,7 @@ void IsoMateric::handleInput()
 		else
 			camera->positionIndex++;
 		this->keysProcessed[GLFW_KEY_Q] = true;
+
 	}
 		
 	if(this->keys[GLFW_KEY_E] && !this->keysProcessed[GLFW_KEY_E])
@@ -130,10 +200,31 @@ void IsoMateric::update(float dt)
 
 	// camera
 	if(lockCamera)
-		camera->viewpoint = playerPos;
+		camera->viewpoint = player.position;
 	glm::mat4 view = camera->getView();
 	glm::mat4 projection = camera->getProjection();
 	
+	// collisions
+	bool collisionX = false;
+	bool collisionZ = false;
+	for (unsigned int i = 0; i < collidePositions.size(); i++)
+	{
+		if(player.position.x + player.size.x >= collidePositions[i].x &&
+		   collidePositions[i].x + 1.0f >= player.position.x)
+			collisionX = true;
+
+		if(player.position.z + player.size.z >= collidePositions[i].z &&
+		   collidePositions[i].z + 1.0f >= player.position.z)
+			collisionZ = true;
+		if(collisionX && collisionZ)
+			std::cout << "collision!" << std::endl;
+		collisionX = false;
+		collisionZ = false;
+
+	}
+
+	std::cout << collidePositions.size() << std::endl;
+
 	// shader uniforms
 	shader.use();
 	shader.setMat4("view", view);
@@ -151,32 +242,14 @@ void IsoMateric::update(float dt)
 		shader.setFloat(("lights[" + index + "].intensity").c_str(), this->lights[i]->intensity);
 	}
 
-
 	lightShader.use();
 	lightShader.setMat4("view", view);
 	lightShader.setMat4("projection", projection);
 }
 
-
-// terrain
-const int MAX_CHUNK_X = 7;
-const int MAX_CHUNK_Z = 7;
-
-float centerX = MAX_CHUNK_X / 2;
-float centerZ = MAX_CHUNK_Z / 2;
-
-int terrain[MAX_CHUNK_X][MAX_CHUNK_Z] = {
-	1, 1, 1, 1, 1, 1, 1, 
-	1, 1, 1, 1, 1, 1, 1,
-	1, 1, 1, 1, 1, 1, 1,
-	1, 1, 1, 1, 1, 1, 1, 
-	1, 1, 1, 1, 1, 1, 1,
-	1, 1, 1, 1, 1, 1, 1
-};
-
 void IsoMateric::render()
 {
-	renderer->draw(playerPos, glm::vec3(1.0f, 1.0f, 1.0f), 0.0f, glm::vec3(1.0f, 1.0f, 0.0f));
+	renderer->draw(player.position, player.size, 0.0f, player.color);
 
 	for(unsigned int i = 0; i < this->lights.size(); i++)
 	{
@@ -184,13 +257,20 @@ void IsoMateric::render()
 	}
 	
 	// terrain
-	for (int x = 0; x < 5; x++)
+	for (int x = 0; x < MAX_CHUNK_X; x++)
 	{
-		for (int z = 0; z < 5; z++)
+		for (int z = 0; z < MAX_CHUNK_Z; z++)
 		{
 			for (int y = 0; y < terrain[x][z]; y++)	
 			{
-				renderer->draw(glm::vec3(float(x) - centerX, y, float(z) - centerZ), glm::vec3(1.0f, 1.0f, 1.0f), 0.0f, glm::vec3(1.0f, 1.0f, 0.0f));
+				glm::vec3 tileColor;
+				if(y > 0)
+
+					tileColor = glm::vec3(0.0f, 0.0f, 0.0f);
+				else
+					tileColor = glm::vec3(1.0f, 1.0f, 1.0f);
+				
+				renderer->draw(glm::vec3(float(x) - centerX, y, float(z) - centerZ), glm::vec3(1.0f, 1.0f, 1.0f), 0.0f, tileColor);
 			}
 		}
 	}
@@ -220,7 +300,7 @@ void IsoMateric::ui()
 		ImGui::Text("\tx: %f", camera->viewpoint.x);
 		ImGui::Text("\ty: %f", camera->viewpoint.y);
 		ImGui::Text("\tz: %f", camera->viewpoint.z);
-		
+	
 
 		ImGui::Text("zoom: %f", camera->zoom);
 		ImGui::Text("positionIndex: %i", camera->positionIndex);
@@ -259,6 +339,17 @@ void IsoMateric::ui()
 		if(ImGui::Button("add"))
 			this->lights.push_back(new Light());
 		}
+		
+		ImGui::Text("player->position");
+		ImGui::Text("\tx: %f", player.position.x);
+		ImGui::Text("\ty: %f", player.position.y);
+		ImGui::Text("\tz: %f", player.position.z);
+
+		ImGui::Text("collidePositions[0]");
+		ImGui::Text("\tx: %f", collidePositions[0].x);
+		ImGui::Text("\ty: %f", collidePositions[0].y);
+		ImGui::Text("\tz: %f", collidePositions[0].z);
+
 		// ending frame
                 ImGui::Render();
                 ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

@@ -23,6 +23,7 @@ public:
 		glm::vec3( 2.0f, 1.15f, -2.0f),
 		glm::vec3( 2.0f, 1.15f,  2.0f),
 	};
+	glm::vec3 getForward();
 };
 
 #endif

@@ -23,21 +23,8 @@ uniform Light lights[MAX_NR_LIGHTS];
 void main()
 {
 	// some variables
-	vec3 norm = normalize(Normal);
-
-	// ambient
-	vec3 heightColor;
-
-	if(FragPos.y <= 0.5f)
-		heightColor = vec3(0.0f, 0.0f, 0.0f);
-	
-	else if (FragPos.y > 0.0f && FragPos.y <= 3.5f)
-		heightColor = vec3(0.0f, 1.0f, 0.0f);
-	
-	else if (FragPos.y > 3.5f)
-		heightColor = vec3(1.0f, 1.0f, 1.0f);
-	
-	vec3 ambient = heightColor * 0.3;
+	vec3 norm = normalize(Normal);	
+	vec3 ambient = color * 0.3;
 
 	// diffuse
 	vec3 diffuse;

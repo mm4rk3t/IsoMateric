@@ -17,9 +17,9 @@
 struct Player
 {
 	glm::vec3 position = glm::vec3(0.0f, 1.0f, 0.0f);
-	glm::vec3 size = glm::vec3(0.5f, 1.0f, 0.5f);
+	glm::vec3 size = glm::vec3(1.0f, 1.0f, 1.0f);
 	glm::vec3 color = glm::vec3(1.0f, 0.0f, 0.0f);
-	float speed = 0.075;
+	float speed = 2.5;
 } player;
 
 // constructor and destructor
@@ -56,11 +56,11 @@ int terrain[MAX_CHUNK_X][MAX_CHUNK_Z] = {
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 4, 2, 3, 2, 3, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 4, 3, 4, 3, 4, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
@@ -71,6 +71,35 @@ int terrain[MAX_CHUNK_X][MAX_CHUNK_Z] = {
 };
 
 std::vector<glm::vec3> collidePositions;
+
+bool AABB(Player player, glm::vec3 object)
+{
+	bool collisionX = player.position.x + player.size.x >= object.x && object.x + 1.0f >= player.position.x;
+	bool collisionZ = player.position.z + player.size.z >= object.z && object.z + 1.0f >= player.position.z;
+	return collisionX && collisionZ;
+}
+
+glm::vec2 AABBdirection(glm::vec2 target)
+{
+	glm::vec2 compass[4] = {
+		glm::vec2(0.0f, 1.0f),
+		glm::vec2(1.0f, 0.0f),
+		glm::vec2(0.0f, -1.0f),
+		glm::vec2(-1.0f, 1.0f),
+	};
+	float max = 0.0f;
+	unsigned int best_match = -1;
+	for(unsigned int i = 0; i < 4; i++)
+	{
+		float dot_product = glm::dot(glm::normalize(target), compass[i]);
+		if(dot_product > max)
+		{
+			max = dot_product;
+			best_match = i;
+		}
+	}
+	return compass[best_match];
+}
 
 // game loop
 void IsoMateric::init()
@@ -110,7 +139,7 @@ void IsoMateric::init()
 
 }
 
-void IsoMateric::handleInput()
+void IsoMateric::handleInput(float dt)
 {
 
 	if(this->keys[47]) // minus
@@ -141,22 +170,22 @@ void IsoMateric::handleInput()
 
 	if(this->keys[GLFW_KEY_W])
 	{
-		player.position += camera->getForward() * player.speed;
+		player.position += camera->getForward() * player.speed * dt;
 	}
 
 	if(this->keys[GLFW_KEY_S])
 	{
-		player.position -= camera->getForward() * player.speed;
+		player.position -= camera->getForward() * player.speed * dt;
 	}
 
 	if(this->keys[GLFW_KEY_D])
 	{
-		player.position += glm::cross(camera->getForward(), glm::vec3(0.0f, 1.0f, 0.0f)) * player.speed;
+		player.position += glm::cross(camera->getForward(), glm::vec3(0.0f, 1.0f, 0.0f)) * player.speed * dt;
 	}
 
 	if(this->keys[GLFW_KEY_A])
 	{
-		player.position -= glm::cross(camera->getForward(), glm::vec3(0.0f, 1.0f, 0.0f)) * player.speed;
+		player.position -= glm::cross(camera->getForward(), glm::vec3(0.0f, 1.0f, 0.0f)) * player.speed * dt;
 	}
 
 	if(this->keys[GLFW_KEY_T] && !this->keysProcessed[GLFW_KEY_T])
@@ -205,25 +234,32 @@ void IsoMateric::update(float dt)
 	glm::mat4 projection = camera->getProjection();
 	
 	// collisions
-	bool collisionX = false;
-	bool collisionZ = false;
 	for (unsigned int i = 0; i < collidePositions.size(); i++)
 	{
-		if(player.position.x + player.size.x >= collidePositions[i].x &&
-		   collidePositions[i].x + 1.0f >= player.position.x)
-			collisionX = true;
-
-		if(player.position.z + player.size.z >= collidePositions[i].z &&
-		   collidePositions[i].z + 1.0f >= player.position.z)
-			collisionZ = true;
-		if(collisionX && collisionZ)
+		if(AABB(player, collidePositions[i]))
+		{
 			std::cout << "collision!" << std::endl;
-		collisionX = false;
-		collisionZ = false;
 
+			glm::vec2 target = (player.position - collidePositions[i]);
+			glm::vec2 direction = -AABBdirection(target);
+		
+			
+			player.position.x += dt * player.speed * direction.y;
+			player.position.z += dt * player.speed * direction.x;
+
+		}	
 	}
 
-	std::cout << collidePositions.size() << std::endl;
+	// borders
+	if(player.position.z > MAX_CHUNK_Z / 2 - 0.5 - player.size.z / 2)
+		player.position.z = MAX_CHUNK_Z / 2 - 0.5 - player.size.z / 2;
+	if(player.position.z < -MAX_CHUNK_Z / 2)
+		player.position.z = -MAX_CHUNK_Z / 2;
+
+	if(player.position.x > MAX_CHUNK_X / 2 - 0.5 - player.size.x / 2)
+		player.position.x = MAX_CHUNK_X / 2 - 0.5 - player.size.x / 2;
+	if(player.position.x < -MAX_CHUNK_X / 2)
+		player.position.x = -MAX_CHUNK_X / 2;
 
 	// shader uniforms
 	shader.use();

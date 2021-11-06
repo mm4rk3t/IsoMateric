@@ -14,8 +14,8 @@
 #include <imgui_impl_glfw.h>
 
 // variables
-const unsigned int SCR_W = 1280;
-const unsigned int SCR_H = 720; 
+const unsigned int SCR_W = 800;
+const unsigned int SCR_H = 600; 
 
 IsoMateric game(SCR_W, SCR_H);
 
@@ -75,7 +75,7 @@ int main()
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
 		
-		game.handleInput();
+		game.handleInput(deltaTime);
 		game.update(deltaTime);
 
 		glfwPollEvents();

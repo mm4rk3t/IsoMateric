@@ -31,7 +31,7 @@ public:
 
 	// game loop
 	void init();
-	void handleInput();
+	void handleInput(float dt);
 	void update(float dt);
 	void render();
 	void ui();

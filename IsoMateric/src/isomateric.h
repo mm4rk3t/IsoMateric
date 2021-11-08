@@ -2,6 +2,7 @@
 #define ISOMATERIC_H
 
 #include "camera.h"
+#include "gameObject.h"
 
 #include <vector>
 #include <string>
@@ -12,14 +13,18 @@ enum State
 	PAUSE
 };
 
-struct Light
+class Light :public GameObject
 {
-	glm::vec3 position;
-	glm::vec3 color;
+public:
 	float intensity;
+	inline Light(float intensity = 1.0f) : intensity(intensity){ }
+};
 
-	inline Light(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f), float intensity = 1.0f) 
-		: position(position), color(color), intensity(intensity){ }
+class Player :public GameObject
+{
+public:
+	float speed;
+	inline Player(float speed = 2.5f) : speed(speed){ }
 };
 
 class IsoMateric
@@ -44,6 +49,8 @@ public:
 
 	// arrays
 	std::vector<Light*> lights;
+	std::vector<GameObject*> floor;
+	std::vector<GameObject*> obstacles;
 };
 
 #endif

@@ -39,6 +39,7 @@ set(
 	IsoMateric/src/shader.cpp
 	IsoMateric/src/texture.cpp
 	IsoMateric/src/camera.cpp
+	IsoMateric/src/gameObject.cpp
 
 	# imgui
 	IsoMateric/vendor/imgui/imgui.cpp
@@ -61,7 +62,8 @@ set(
 	IsoMateric/src/shader.h
 	IsoMateric/src/texture.h
 	IsoMateric/src/camera.h
-	)
+	IsoMateric/src/gameObject.h
+)
 
 # join everything
 add_executable(IsoMateric IsoMateric/vendor/glad/src/glad.c ${SOURCE_EXECUTABLES} ${HEADER_EXECUTABLES})

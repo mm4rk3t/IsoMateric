@@ -77,6 +77,7 @@ int main()
 		
 		game.handleInput(deltaTime);
 		game.update(deltaTime);
+		game.collisions();
 
 		glfwPollEvents();
 		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);

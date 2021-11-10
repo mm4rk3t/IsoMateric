@@ -47,22 +47,22 @@ const unsigned int terrainSizeX = 16;
 const unsigned int terrainSizeZ = 16;
 
 int terrain[terrainSizeX][terrainSizeZ] = {
-	5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 4, 3, 4, 3, 4, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 2, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 2, 1, 1, 1, 1,  
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
-	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  
-	5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 
 
 };
 
@@ -112,7 +112,7 @@ void IsoMateric::init()
 			
 			if (terrain[x][z] > 1)
 			{
-				for(int i = 1; i <= terrain[x][z]; i++)
+				for(int i = 1; i < terrain[x][z]; i++)
 				{
 					GameObject* go = new GameObject(glm::vec3((float)(x), i, (float)(z)), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(1.0f));
 					go->renderer = renderer;
@@ -121,6 +121,88 @@ void IsoMateric::init()
 
 			}
 
+		}
+	}
+}
+
+enum direction
+{
+	up,
+	right,
+	down,
+	left
+};
+
+direction collisionDirection(glm::vec2 target)
+{
+	glm::vec2 compass[] = {
+		glm::vec2(0.0f, 1.0f),
+		glm::vec2(1.0f, 1.0f),
+		glm::vec2(0.0f, -1.0f),
+		glm::vec2(-1.0f,01.0f)
+	};
+	
+	float max = 0.0f;
+	unsigned int best_match;
+	for (unsigned int i = 0; i < 4; i++)
+	{
+		float dot_product = glm::dot(target, compass[i]);
+		if (dot_product > max)
+		{
+			max = dot_product;
+			best_match = i;
+		}
+	}
+	return (direction)best_match;
+}
+
+typedef std::tuple<bool, direction, glm::vec2> collision;
+
+collision checkCollision(Player* player, GameObject* object)
+{
+	glm::vec2 playerPosition(player->position.x, player->position.z);
+	glm::vec2 objectPosition(object->position.x, object->position.z);
+	
+	glm::vec2 difference = playerPosition - objectPosition;
+	glm::vec2 clamped = glm::clamp(difference, -0.5f, 0.5f);
+	glm::vec2 closest = objectPosition + clamped;
+	difference = closest - playerPosition;
+	
+	if(glm::length(difference) < player->size.x)
+		return std::make_tuple(true, collisionDirection(difference), difference);
+	else
+		return std::make_tuple(false, up, glm::vec2(0.0f, 0.0f));
+}
+
+
+void IsoMateric::collisions()
+{
+	for(GameObject* obstacle : this->obstacles)
+	{
+		collision col = checkCollision(player, obstacle);
+		if(std::get<0>(col))
+		{
+			std::cout << "collision!" << std::endl;
+			direction dir = std::get<1>(col);
+			glm::vec2 diff = std::get<2>(col);
+		
+			if(dir == left || dir == right)
+			{
+				float penetration = 0.5f - std::abs(diff.x);
+				if (dir == left)
+					player->position.x += penetration;
+				else 
+					player->position.x -= penetration;
+			}
+			else if(dir == up || dir == down)
+			{
+				float penetration = 0.5f - std::abs(diff.y);
+				if (dir == up)
+					player->position.z -= penetration;
+				else 
+					player->position.z += penetration;
+
+			}
 		}
 	}
 }
@@ -157,6 +239,19 @@ void IsoMateric::update(float dt)
 	lightShader.use();
 	lightShader.setMat4("view", view);
 	lightShader.setMat4("projection", projection);
+	
+	// player
+	if(player->position.x - player->size.x < 0.0)
+		player->position.x = player->size.x;
+
+	if(player->position.z - player->size.z < 0.0)
+		player->position.z = player->size.z;
+	
+	if(player->position.x + player->size.x + 1.0f > terrainSizeX)
+		player->position.x = terrainSizeX - player->size.x - 1.0f;
+	
+	if(player->position.z + player->size.z + 1.0f > terrainSizeZ)
+		player->position.z = terrainSizeZ - player->size.z - 1.0f;
 }
 
 void IsoMateric::render()

@@ -40,6 +40,7 @@ public:
 	void update(float dt);
 	void render();
 	void ui();
+	void collisions();
 
 	// members
 	unsigned int width, height;

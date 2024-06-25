@@ -5,8 +5,8 @@ When looking at the code take in consideration that this is my first project and
 
 It only builds on linux at the moment, and relative paths don't work, as you can see when trying to load shader files.
 
-## Preview
-![Uploading ezgif-6-3683a41669.gif…]()
+## Demo
+![CollisionPreview](https://github.com/mm4rk3t/IsoMateric/assets/45017214/2b0033ea-5bea-498e-9e29-44551febb0c0)
 
 ### TO-DO:
 - [x] ~~Figure out why nothing renders below a certain point in the window~~

@@ -15,6 +15,8 @@
 //   script <path relative to assets/>
 //   asteroids <count>
 //   trunk <x> <z>           an endless tree trunk through that column (any number)
+//   tiles                   optional, like heights: one row of sizeZ material characters
+//                           per x ('.' default, s S g w d r b)
 //   light <x> <y> <z> <r> <g> <b> <intensity> <radius>   (any number of lines)
 //   heights
 //   <sizeZ numbers>   one row per x, sizeX rows
@@ -25,6 +27,7 @@ Level Level::flat(int sizeX, int sizeZ)
 	level.sizeX = std::max(1, sizeX);
 	level.sizeZ = std::max(1, sizeZ);
 	level.heights.assign(static_cast<size_t>(level.sizeX) * level.sizeZ, 1);
+	level.tiles.assign(level.heights.size(), '.');
 	level.spawn = glm::ivec2(level.sizeX / 2, level.sizeZ / 2);
 	return level;
 }
@@ -53,6 +56,7 @@ bool Level::load(const std::string& path)
 	std::string line;
 	int lineNo = 0;
 	bool readingHeights = false;
+	bool readingTiles = false;
 	int row = 0;
 
 	auto fail = [&](const char* what) {
@@ -68,6 +72,17 @@ bool Level::load(const std::string& path)
 		std::string key;
 		if (!(in >> key))
 			continue;
+
+		if (readingTiles)
+		{
+			if (static_cast<int>(key.size()) != result.sizeZ)
+				return fail("tiles row must have exactly sizeZ characters");
+			for (int z = 0; z < result.sizeZ; z++)
+				result.setTile(row, z, key[static_cast<size_t>(z)]);
+			if (++row == result.sizeX)
+				readingTiles = false;
+			continue;
+		}
 
 		if (readingHeights)
 		{
@@ -141,6 +156,13 @@ bool Level::load(const std::string& path)
 			else
 				LOG_WARN("level: %s:%d: more than %d lights, ignoring", path.c_str(), lineNo, kMaxLights);
 		}
+		else if (key == "tiles")
+		{
+			if (result.sizeX == 0)
+				return fail("'tiles' before 'size'");
+			readingTiles = true;
+			row = 0;
+		}
 		else if (key == "heights")
 		{
 			if (result.sizeX == 0)
@@ -158,6 +180,8 @@ bool Level::load(const std::string& path)
 		return fail("missing 'size'");
 	if (readingHeights)
 		return fail("not enough height rows");
+	if (readingTiles)
+		return fail("not enough tiles rows");
 	if (!result.inBounds(result.spawn.x, result.spawn.y))
 		result.spawn = glm::ivec2(result.sizeX / 2, result.sizeZ / 2);
 
@@ -190,6 +214,16 @@ bool Level::save(const std::string& path) const
 	for (const PointLight& l : lights)
 		file << "light " << l.position.x << ' ' << l.position.y << ' ' << l.position.z << "  "
 		     << l.color.r << ' ' << l.color.g << ' ' << l.color.b << "  " << l.intensity << ' ' << l.radius << '\n';
+	if (std::any_of(tiles.begin(), tiles.end(), [](char t) { return t != '.'; }))
+	{
+		file << "tiles\n";
+		for (int x = 0; x < sizeX; x++)
+		{
+			for (int z = 0; z < sizeZ; z++)
+				file << tile(x, z);
+			file << '\n';
+		}
+	}
 	file << "heights\n";
 	for (int x = 0; x < sizeX; x++)
 	{

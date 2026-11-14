@@ -32,6 +32,14 @@ public:
 	bool inBounds(int x, int z) const { return x >= 0 && z >= 0 && x < sizeX && z < sizeZ; }
 	int height(int x, int z) const { return inBounds(x, z) ? heights[index(x, z)] : 0; }
 	void setHeight(int x, int z, int h);
+	// surface material of a column: '.' default, 's' stone, 'S' dark stone, 'g' grass,
+	// 'w' wood planks, 'd' dirt, 'r' rock, 'b' plaster wall (see blockColor in isomateric.cpp)
+	char tile(int x, int z) const { return inBounds(x, z) ? tiles[index(x, z)] : '.'; }
+	void setTile(int x, int z, char t)
+	{
+		if (inBounds(x, z))
+			tiles[index(x, z)] = t;
+	}
 	bool standable(int x, int z) const { return height(x, z) >= 1 && !isTrunk(x, z); }
 	// an endless tree trunk passing through the level: solid at every height
 	bool isTrunk(int x, int z) const
@@ -48,6 +56,7 @@ public:
 
 	int sizeX = 0, sizeZ = 0;
 	std::vector<int> heights;
+	std::vector<char> tiles;
 	glm::ivec2 spawn{0, 0};
 
 	glm::vec3 sunDirection{-0.43f, -0.33f, -0.38f}; // direction the light travels

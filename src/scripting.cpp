@@ -223,6 +223,25 @@ namespace
 		return 1;
 	}
 
+	// iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow]) -> entity
+	// a decorative box centred at x, y, z; walk-through, casts shadows unless glowing
+	int apiSpawnBox(lua_State* L)
+	{
+		ScriptContext& ctx = ctxOf(L);
+		Box box;
+		glm::vec3 pos = checkVec3(L, 1);
+		box.size = checkVec3(L, 4);
+		box.color = glm::vec4(checkVec3(L, 7), 1.0f);
+		box.glow = lua_toboolean(L, 10) != 0;
+		entt::registry& reg = *ctx.registry;
+		entt::entity e = reg.create();
+		reg.emplace<Transform>(e, Transform{pos, 0.0f});
+		reg.emplace<Box>(e, box);
+		reg.emplace<ScriptOwned>(e);
+		pushEntity(L, e);
+		return 1;
+	}
+
 	int apiDestroy(lua_State* L)
 	{
 		ctxOf(L).registry->destroy(checkEntity(L, 1));
@@ -322,6 +341,7 @@ bool ScriptHost::load(const std::string& path)
 		{"spawn_emitter", apiSpawnEmitter},
 		{"burst", apiBurst},
 		{"spawn_glass", apiSpawnGlass},
+		{"spawn_box", apiSpawnBox},
 		{"destroy", apiDestroy},
 		{"player", apiPlayer},
 		{"play_sound", apiPlaySound},

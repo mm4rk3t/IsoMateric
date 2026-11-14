@@ -29,6 +29,8 @@ static void testLevelRoundTrip()
 	a.setHeight(1, 2, 3);
 	a.setHeight(4, 6, 0);
 	a.spawn = {2, 3};
+	a.setTile(1, 2, 's');
+	a.setTile(4, 6, 'w');
 	PointLight l;
 	l.position = {1.5f, 2.0f, 3.0f};
 	l.radius = 4.0f;
@@ -42,6 +44,7 @@ static void testLevelRoundTrip()
 
 	CHECK(b.sizeX == 5 && b.sizeZ == 7);
 	CHECK(b.height(1, 2) == 3);
+	CHECK(b.tile(1, 2) == 's' && b.tile(4, 6) == 'w' && b.tile(0, 0) == '.');
 	CHECK(b.height(4, 6) == 0);
 	CHECK(b.spawn == glm::ivec2(2, 3));
 	CHECK(b.lights.size() == 1 && std::abs(b.lights[0].radius - 4.0f) < 1e-5f);

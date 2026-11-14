@@ -116,7 +116,13 @@ private:
 		float rainIntensity = 0.7f;
 		glm::vec2 wind{1.5f, 0.6f};
 		bool fogFollowsSky = true;
+		bool lightning = false;      // strikes while it rains
+		float lightningTimer = 4.0f; // seconds to the next strike
+		float flashAge = -1.0f;      // seconds since the last strike, < 0 when idle
+		float thunderDelay = 0.0f;   // the sound arrives this long after the flash
+		bool thunderPlayed = true;
 	} weather;
+	void strikeLightning();
 	Rain rain;
 	void updateWeather(float dt);
 	void updateSky();

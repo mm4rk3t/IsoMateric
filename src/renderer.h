@@ -56,7 +56,7 @@ struct RenderSettings
 	bool dither = false;
 	// see-through window: block pixels between the camera and cutawayCenter, within
 	// cutawayRadius of the player on screen and above cutawayFloor, are discarded
-	// sky backdrop: 0 plain clear colour, 1 atmosphere, 2 galaxy
+	// sky backdrop: 0 plain clear colour, 1 atmosphere, 2 galaxy, 3 overcast
 	int sky = 0;
 	float skyBrightness = 1.0f;
 	glm::vec3 skyTop{0.2f, 0.3f, 0.6f};
@@ -73,6 +73,22 @@ struct RenderSettings
 	float bloomIntensity = 0.7f;
 	int bloomPasses = 2;
 
+	// lights and atmosphere
+	float lightFlicker = 0.0f;    // 0 steady .. 1 candle-like flicker of point lights
+	float lightningFlash = 0.0f;  // 0..1 this frame, driven by the weather
+	bool godRays = false;         // sun/moon shafts ray-marched through the shadow map
+	float godRayStrength = 0.6f;
+	int godRaySteps = 32;
+
+	// colour grading, vignette and film grain (final pass)
+	bool grading = false;
+	float saturation = 1.0f;
+	float contrast = 1.0f;
+	glm::vec3 shadowTint{1.0f};
+	glm::vec3 highlightTint{1.0f};
+	float vignette = 0.0f;
+	float grain = 0.0f;
+
 	// stylised shading: 0 smooth, 1 cel, 2 Moebius; ink outlines from the depth buffer
 	int shadingStyle = 0;
 	float hatchSpacing = 5.0f;
@@ -88,6 +104,7 @@ struct RenderSettings
 	bool grass = true;
 	int grassDensity = 24;  // blades per tile
 	float grassHeight = 1.0f;
+	float grassDry = 0.0f;  // 0 lush green .. 1 withered
 	glm::vec3 grassPusher{0.0f, -1000.0f, 0.0f};
 	bool fog = false;
 	glm::vec3 fogColor{0.5f, 0.55f, 0.6f};
@@ -143,7 +160,9 @@ private:
 	void setLighting(Shader& shader, const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount,
 	                 const RenderSettings& settings);
 	glm::mat4 sunMatrix(const Level& level, const FrameData& frame);
-	float shadowTexelWorld = 0.01f; // world size of one shadow map texel
+	glm::vec3 flashedSun(const Level& level, const RenderSettings& settings) const;
+	float shadowTexelWorld = 0.01f;
+	glm::vec3 raysMin{0.0f}, raysMax{0.0f}; // volume the god rays are marched through // world size of one shadow map texel
 	void ensureSceneTarget(int w, int h);
 
 	Shader world, depth, unlit, mesh, meshDepth, post;

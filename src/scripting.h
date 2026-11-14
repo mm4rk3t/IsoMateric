@@ -27,7 +27,7 @@ struct ScriptContext
 // Runs one Lua 5.4 game script. The script defines optional callbacks:
 //   on_start()                 after (re)loading
 //   on_update(dt)              every frame
-//   on_event(name, x, y, z)    "jump", "land", "respawn", "click"
+//   on_event(name, x, y, z)    "jump", "land", "respawn", "blood_moon_start", "blood_moon_end"
 // and calls the engine through the global table `iso` (see README).
 // Saving the file reloads it: entities the script spawned are destroyed first.
 class ScriptHost

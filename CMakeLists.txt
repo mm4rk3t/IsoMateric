@@ -81,6 +81,7 @@ add_library(isomateric_core STATIC
 	src/player.cpp
 	src/pathfinding.cpp
 	src/particles.cpp
+	src/weather.cpp
 )
 target_include_directories(isomateric_core PUBLIC src)
 target_include_directories(isomateric_core SYSTEM PUBLIC ${VENDOR}/glm ${VENDOR}/entt)

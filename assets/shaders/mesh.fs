@@ -18,5 +18,6 @@ void main()
 	vec4 base = baseColor;
 	if (hasTexture)
 		base *= texture(albedo, vUV);
-	FragColor = vec4(shade(base.rgb, vWorldPos, vNormal, vLightSpacePos), base.a);
+	vec3 lit = shade(base.rgb, vWorldPos, vNormal, vLightSpacePos);
+	FragColor = vec4(applyFog(lit, vWorldPos), base.a);
 }

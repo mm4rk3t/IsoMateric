@@ -1,11 +1,13 @@
 #include "renderer.h"
 #include "log.h"
 
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <string>
 
 namespace
@@ -62,6 +64,113 @@ Renderer::~Renderer()
 	glDeleteTextures(1, &sceneColor);
 	glDeleteRenderbuffers(1, &sceneDepth);
 	glDeleteVertexArrays(1, &emptyVao);
+	glDeleteVertexArrays(1, &sphereVao);
+	glDeleteBuffers(1, &sphereVbo);
+	glDeleteBuffers(1, &sphereEbo);
+	glDeleteFramebuffers(1, &grabFbo);
+	glDeleteTextures(1, &grabTex);
+}
+
+void Renderer::buildSphere()
+{
+	// unit UV sphere: position doubles as the normal
+	const int rings = 24, segments = 48;
+	std::vector<float> v;
+	std::vector<unsigned int> idx;
+	for (int r = 0; r <= rings; r++)
+	{
+		float phi = glm::pi<float>() * static_cast<float>(r) / rings;
+		for (int sgm = 0; sgm <= segments; sgm++)
+		{
+			float theta = glm::two_pi<float>() * static_cast<float>(sgm) / segments;
+			v.insert(v.end(), {std::sin(phi) * std::cos(theta), std::cos(phi), std::sin(phi) * std::sin(theta)});
+		}
+	}
+	for (int r = 0; r < rings; r++)
+		for (int sgm = 0; sgm < segments; sgm++)
+		{
+			unsigned int a = static_cast<unsigned int>(r * (segments + 1) + sgm), b = a + segments + 1;
+			idx.insert(idx.end(), {a, a + 1, b, b, a + 1, b + 1}); // counter-clockwise from outside
+		}
+	sphereIndexCount = static_cast<GLsizei>(idx.size());
+	glGenVertexArrays(1, &sphereVao);
+	glGenBuffers(1, &sphereVbo);
+	glGenBuffers(1, &sphereEbo);
+	glBindVertexArray(sphereVao);
+	glBindBuffer(GL_ARRAY_BUFFER, sphereVbo);
+	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(v.size() * sizeof(float)), v.data(), GL_STATIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEbo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(idx.size() * sizeof(unsigned int)), idx.data(), GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+	glBindVertexArray(0);
+}
+
+void Renderer::grabFrame(bool pixelate)
+{
+	// copy (and resolve MSAA of) the frame drawn so far into a mipmapped texture
+	const int srcX = pixelate ? 0 : viewX;
+	const int w = pixelate ? sceneW : viewW;
+	const int h = pixelate ? sceneH : height;
+	const GLuint target = pixelate ? sceneFbo : 0;
+	if (!grabFbo || w != grabW || h != grabH)
+	{
+		if (!grabFbo)
+		{
+			glGenFramebuffers(1, &grabFbo);
+			glGenTextures(1, &grabTex);
+		}
+		grabW = w;
+		grabH = h;
+		glBindTexture(GL_TEXTURE_2D, grabTex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glGenerateMipmap(GL_TEXTURE_2D);
+		glBindFramebuffer(GL_FRAMEBUFFER, grabFbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, grabTex, 0);
+	}
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, target);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, grabFbo);
+	glBlitFramebuffer(srcX, 0, srcX + w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	glBindFramebuffer(GL_FRAMEBUFFER, target);
+	glBindTexture(GL_TEXTURE_2D, grabTex);
+	glGenerateMipmap(GL_TEXTURE_2D); // rough glass samples blurrier mips
+}
+
+void Renderer::drawGlassSphere(const Camera& camera, const Level& level, const GlassDraw& g, int lightCount, bool pixelate,
+                               const RenderSettings& settings)
+{
+	grabFrame(pixelate); // per sphere, so a nearer sphere refracts the farther ones
+
+	glass.use();
+	glass.set("view", camera.view());
+	glass.set("projection", camera.projection());
+	glass.set("viewDir", camera.toCamera());
+	glass.set("sunDir", glm::normalize(level.sunDirection));
+	glass.set("sunColor", level.sunColor);
+	glass.set("ambient", level.ambient);
+	glass.set("numLights", lightCount);
+	glass.set("grab", 2);
+	glass.set("viewOrigin", glm::vec3(static_cast<float>(pixelate ? 0 : viewX), 0.0f, 0.0f));
+	glass.set("viewSize", glm::vec3(static_cast<float>(grabW), static_cast<float>(grabH), 0.0f));
+	glass.set("center", g.center);
+	glass.set("radius", g.radius);
+	glass.set("tint", g.tint);
+	glass.set("ior", std::max(g.ior, 1.0f));
+	glass.set("roughness", glm::clamp(g.roughness, 0.0f, 1.0f));
+	glass.set("absorption", std::max(g.absorption, 0.0f));
+	glass.set("dispersion", g.dispersion);
+	setWeather(glass, settings);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, grabTex);
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(sphereVao);
+	glDrawElements(GL_TRIANGLES, sphereIndexCount, GL_UNSIGNED_INT, nullptr);
+	glBindVertexArray(0);
+	drawCalls++;
 }
 
 void Renderer::ensureSceneTarget(int w, int h)
@@ -100,6 +209,8 @@ bool Renderer::init()
 	mesh = Shader(kShaderDir + "mesh.vs", kShaderDir + "mesh.fs");
 	meshDepth = Shader(kShaderDir + "mesh_depth.vs", kShaderDir + "depth.fs");
 	post = Shader(kShaderDir + "post.vs", kShaderDir + "post.fs");
+	glass = Shader(kShaderDir + "glass.vs", kShaderDir + "glass.fs");
+	buildSphere();
 	glGenVertexArrays(1, &emptyVao);
 	if (!reloadShaders())
 		return false;
@@ -165,10 +276,11 @@ bool Renderer::init()
 
 bool Renderer::reloadShaders()
 {
-	bool ok = world.load() & depth.load() & unlit.load() & mesh.load() & meshDepth.load() & post.load();
+	bool ok = world.load() & depth.load() & unlit.load() & mesh.load() & meshDepth.load() & post.load() & glass.load();
+	glass.bindBlock("Lights", 0);
 	world.bindBlock("Lights", 0);
 	mesh.bindBlock("Lights", 0);
-	return ok && world.valid() && depth.valid() && unlit.valid() && mesh.valid() && meshDepth.valid() && post.valid();
+	return ok && world.valid() && depth.valid() && unlit.valid() && mesh.valid() && meshDepth.valid() && post.valid() && glass.valid();
 }
 
 void Renderer::reloadShadersIfChanged()
@@ -181,6 +293,8 @@ void Renderer::reloadShadersIfChanged()
 	unlit.reloadIfChanged();
 	meshDepth.reloadIfChanged();
 	post.reloadIfChanged();
+	if (glass.reloadIfChanged())
+		glass.bindBlock("Lights", 0);
 }
 
 void Renderer::drawMesh(Shader& shader, const MeshDraw& d, bool materials)
@@ -228,6 +342,20 @@ void Renderer::setLighting(Shader& shader, const Camera& camera, const Level& le
 	shader.set("shadowsEnabled", settings.shadows ? 1 : 0);
 	shader.set("shadowMap", 0);
 	shader.set("shadowNormalOffset", shadowTexelWorld * 1.5f);
+	setWeather(shader, settings);
+}
+
+void Renderer::setWeather(Shader& shader, const RenderSettings& settings)
+{
+	shader.set("wetness", settings.wetness);
+	shader.set("fogEnabled", settings.fog ? 1 : 0);
+	shader.set("fogColor", settings.fogColor);
+	shader.set("fogDensity", settings.fogDensity);
+	shader.set("fogHeight", settings.fogHeight);
+	shader.set("fogBase", settings.fogBase);
+	shader.set("fogDistance", settings.fogDistance);
+	shader.set("fogFocus", settings.fogFocus);
+	shader.set("time", settings.time);
 }
 
 void Renderer::resize(int w, int h)
@@ -245,16 +373,22 @@ void Renderer::setViewRect(int x, int w)
 
 void Renderer::draw(const std::vector<Instance>& instances)
 {
-	if (instances.empty())
+	draw(instances.data(), instances.size());
+}
+
+void Renderer::draw(const Instance* instances, size_t count)
+{
+	if (count == 0)
 		return;
+	const GLsizeiptr bytes = static_cast<GLsizeiptr>(count * sizeof(Instance));
 	glBindBuffer(GL_ARRAY_BUFFER, instanceVbo);
 	// orphan + upload: lets the driver hand out fresh storage instead of stalling
-	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(instances.size() * sizeof(Instance)), nullptr, GL_STREAM_DRAW);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(instances.size() * sizeof(Instance)), instances.data());
+	glBufferData(GL_ARRAY_BUFFER, bytes, nullptr, GL_STREAM_DRAW);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, bytes, instances);
 	glBindVertexArray(cubeVao);
-	glDrawArraysInstanced(GL_TRIANGLES, 0, 36, static_cast<GLsizei>(instances.size()));
+	glDrawArraysInstanced(GL_TRIANGLES, 0, 36, static_cast<GLsizei>(count));
 	drawCalls++;
-	instancesDrawn += static_cast<int>(instances.size());
+	instancesDrawn += static_cast<int>(count);
 }
 
 glm::mat4 Renderer::sunMatrix(const Level& level, const FrameData& frame)
@@ -372,38 +506,55 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 		glDisable(GL_BLEND);
 	}
 
-	// 5. unlit overlay
-	if (!frame.overlay.empty())
-	{
-		unlit.use();
-		unlit.set("view", view);
-		unlit.set("projection", projection);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glDepthMask(GL_FALSE);
-		draw(frame.overlay);
-		glDepthMask(GL_TRUE);
-		glDisable(GL_BLEND);
-	}
 
-	// 6. particles: alpha-blended (sorted) then additive (order independent)
-	if (!frame.particlesAlpha.empty() || !frame.particlesAdditive.empty())
+	// 5. transparent queue: overlay, particles and glass, far to near.
+	// Glass writes opaque colour over a copy of the frame, so everything behind a sphere
+	// must be drawn before it (to be refracted) and everything in front after it.
 	{
 		const glm::vec3 toCam = camera.toCamera();
-		std::sort(frame.particlesAlpha.begin(), frame.particlesAlpha.end(), [&](const Instance& a, const Instance& b) {
-			return glm::dot(a.offset, toCam) < glm::dot(b.offset, toCam);
-		});
-		unlit.use();
-		unlit.set("view", view);
-		unlit.set("projection", projection);
-		glEnable(GL_BLEND);
-		glDepthMask(GL_FALSE);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		draw(frame.particlesAlpha);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-		draw(frame.particlesAdditive);
-		glDepthMask(GL_TRUE);
-		glDisable(GL_BLEND);
+		auto key = [&](const glm::vec3& p) { return glm::dot(p, toCam); }; // larger = nearer
+		auto sortFarToNear = [&](std::vector<Instance>& v) {
+			std::sort(v.begin(), v.end(), [&](const Instance& a, const Instance& b) { return key(a.offset) < key(b.offset); });
+		};
+		sortFarToNear(frame.overlay);
+		sortFarToNear(frame.particlesAlpha);
+		sortFarToNear(frame.particlesAdditive);
+		std::sort(frame.glass.begin(), frame.glass.end(),
+		          [&](const GlassDraw& a, const GlassDraw& b) { return key(a.center) < key(b.center); });
+
+		size_t nextOverlay = 0, nextAlpha = 0, nextAdditive = 0;
+		auto drawUntil = [&](float limit) {
+			auto take = [&](const std::vector<Instance>& v, size_t& i) {
+				size_t from = i;
+				while (i < v.size() && key(v[i].offset) < limit)
+					i++;
+				return std::make_pair(v.data() + from, i - from);
+			};
+			auto overlay = take(frame.overlay, nextOverlay);
+			auto alpha = take(frame.particlesAlpha, nextAlpha);
+			auto additive = take(frame.particlesAdditive, nextAdditive);
+			if (!overlay.second && !alpha.second && !additive.second)
+				return;
+			unlit.use();
+			unlit.set("view", view);
+			unlit.set("projection", projection);
+			glEnable(GL_BLEND);
+			glDepthMask(GL_FALSE);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			draw(overlay.first, overlay.second);
+			draw(alpha.first, alpha.second);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+			draw(additive.first, additive.second);
+			glDepthMask(GL_TRUE);
+			glDisable(GL_BLEND);
+		};
+
+		for (const GlassDraw& g : frame.glass)
+		{
+			drawUntil(key(g.center));
+			drawGlassSphere(camera, level, g, lightCount, pixelate, settings);
+		}
+		drawUntil(std::numeric_limits<float>::infinity());
 	}
 
 	// 7. pixelizer upscale + posterize

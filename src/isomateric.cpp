@@ -159,7 +159,10 @@ void IsoMateric::loadLevel(const std::string& path)
 	Level loaded;
 	if (!loaded.load(path))
 		return;
+	bool cycling = dayNight.running;
+	setDayNight(false); // re-capture the new level's own sun below
 	level = std::move(loaded);
+	setDayNight(cycling);
 	levelPath = path;
 	resetPlayer();
 }
@@ -233,9 +236,15 @@ void IsoMateric::run()
 			syncPlayerEntity(dt);
 			updateAnimation(dt);
 		}
+		if (dayNight.running)
+			advanceDayNight(dt);
 		{
 			PROFILE_SCOPE("particles");
 			updateParticles(registry, dt, rng);
+		}
+		{
+			PROFILE_SCOPE("weather");
+			updateWeather(dt);
 		}
 
 		// camera after movement and collision, so it never trails a frame behind
@@ -255,6 +264,8 @@ void IsoMateric::run()
 			PROFILE_SCOPE("ui");
 			if (showDebug)
 				drawUi(dt);
+			if (showLabels)
+				drawLabels();
 			ImGui::Render();
 			updateLayout(); // sidebar may have been resized or toggled
 		}
@@ -473,6 +484,25 @@ void IsoMateric::buildFrame(FrameData& frame)
 	if (!registry.all_of<MeshRenderer>(playerEntity))
 		frame.opaque.push_back({player().position, player().size, glm::vec4(0.9f, 0.2f, 0.2f, 1.0f)});
 
+	// glass
+	for (auto [entity, t, g] : registry.view<Transform, Glass>().each())
+		frame.glass.push_back({t.position, g.radius, g.tint, g.ior, g.roughness, g.absorption, g.dispersion});
+
+	// rain: thin streaks and splashes, dimmed at night so they do not glow
+	if (!rain.drops.empty() || !rain.splashes.empty())
+	{
+		float sunLum = glm::dot(level.sunColor, glm::vec3(0.3f, 0.6f, 0.1f));
+		float bright = glm::clamp(level.ambient * 1.5f + sunLum * 0.5f, 0.12f, 1.0f);
+		glm::vec3 c = glm::vec3(0.75f, 0.8f, 0.92f) * bright;
+		for (const Rain::Drop& d : rain.drops)
+			frame.particlesAlpha.push_back({d.position, glm::vec3(0.025f, 0.45f, 0.025f), glm::vec4(c, 0.45f)});
+		for (const Rain::Splash& s : rain.splashes)
+		{
+			float f = s.age / rain.splashLife;
+			frame.particlesAlpha.push_back({s.position, glm::vec3(0.05f * (1.0f - f) + 0.01f), glm::vec4(c, 0.6f * (1.0f - f))});
+		}
+	}
+
 	// particles
 	auto emitters = registry.view<ParticleEmitter>();
 	for (auto entity : emitters)
@@ -517,6 +547,151 @@ void IsoMateric::buildFrame(FrameData& frame)
 			frame.overlay.push_back({glm::vec3(c.x, top + 0.02f, c.z), glm::vec3(1.0f, 0.03f, 1.0f),
 			                         ok ? glm::vec4(0.3f, 0.9f, 1.0f, 0.35f) : glm::vec4(1.0f, 0.3f, 0.3f, 0.35f)});
 		}
+	}
+}
+
+void IsoMateric::setDayNight(bool enabled)
+{
+	if (enabled == dayNight.running)
+		return;
+	if (!enabled)
+	{
+		setBloodMoon(false);
+		dayNight.bloodMoonFade = 0.0f;
+	}
+	if (enabled)
+	{
+		dayNight.savedSunDirection = level.sunDirection;
+		dayNight.savedSunColor = level.sunColor;
+		dayNight.savedAmbient = level.ambient;
+		dayNight.savedClear = renderSettings.clearColor;
+		dayNight.running = true;
+		applyDayNight();
+	}
+	else
+	{
+		level.sunDirection = dayNight.savedSunDirection;
+		level.sunColor = dayNight.savedSunColor;
+		level.ambient = dayNight.savedAmbient;
+		renderSettings.clearColor = dayNight.savedClear;
+		dayNight.running = false;
+	}
+}
+
+void IsoMateric::advanceDayNight(float dt)
+{
+	const float before = dayNight.hour;
+	dayNight.hour = std::fmod(dayNight.hour + dt * dayNight.speed, 24.0f);
+	auto crossed = [&](float mark) { // handles wrapping past midnight
+		return before <= dayNight.hour ? (before < mark && dayNight.hour >= mark) : (before < mark || dayNight.hour >= mark);
+	};
+	if (crossed(19.0f) && std::uniform_real_distribution<float>(0.0f, 1.0f)(rng) < dayNight.bloodMoonChance)
+		setBloodMoon(true);
+	if (crossed(6.0f))
+		setBloodMoon(false);
+
+	float target = dayNight.bloodMoon ? 1.0f : 0.0f;
+	dayNight.bloodMoonFade += (target - dayNight.bloodMoonFade) * (1.0f - std::exp(-dt * 1.5f));
+	if (registry.valid(dayNight.ash))
+		registry.get<Transform>(dayNight.ash).position = camera.focus + glm::vec3(0.0f, 7.0f, 0.0f);
+	applyDayNight();
+}
+
+void IsoMateric::setBloodMoon(bool active)
+{
+	if (active == dayNight.bloodMoon)
+		return;
+	dayNight.bloodMoon = active;
+	glm::vec3 at = player().feet();
+	if (active)
+	{
+		LOG_INFO("blood moon rises");
+		audio.play("bloodmoon");
+		ParticleEmitter ash = particlePreset("ash");
+		dayNight.ash = registry.create();
+		registry.emplace<Transform>(dayNight.ash, Transform{camera.focus + glm::vec3(0.0f, 7.0f, 0.0f), 0.0f});
+		registry.emplace<ParticleEmitter>(dayNight.ash, ash);
+		registry.emplace<Name>(dayNight.ash, Name{"blood moon ash"});
+		scripts->event("blood_moon_start", at);
+	}
+	else
+	{
+		if (registry.valid(dayNight.ash))
+			registry.destroy(dayNight.ash);
+		dayNight.ash = entt::null;
+		scripts->event("blood_moon_end", at);
+	}
+}
+
+void IsoMateric::applyDayNight()
+{
+	// sun rises at 6:00 (east, +x), peaks at 12:00, sets at 18:00; the moon is opposite
+	const float angle = (dayNight.hour - 6.0f) / 12.0f * glm::pi<float>();
+	const float height = std::sin(angle); // > 0 while the sun is up
+	const float day = glm::smoothstep(-0.15f, 0.25f, height);
+	const float twilight = 1.0f - glm::smoothstep(0.0f, 0.35f, std::abs(height));
+
+	glm::vec3 toLight;
+	glm::vec3 color;
+	if (height >= 0.0f)
+	{
+		toLight = glm::vec3(std::cos(angle) * 0.9f, std::max(height, 0.08f), 0.4f);
+		glm::vec3 low(1.0f, 0.5f, 0.25f), high(1.0f, 0.96f, 0.88f);
+		color = glm::mix(low, high, glm::smoothstep(0.0f, 0.5f, height)) * glm::smoothstep(-0.02f, 0.12f, height);
+	}
+	else
+	{
+		toLight = glm::vec3(-std::cos(angle) * 0.9f, std::max(-height, 0.15f), -0.4f);
+		glm::vec3 moon = glm::vec3(0.30f, 0.40f, 0.70f) * 0.55f;
+		float pulse = 0.85f + 0.15f * std::sin(elapsed * 1.7f);
+		glm::vec3 blood = glm::vec3(1.0f, 0.12f, 0.06f) * 0.95f * pulse;
+		color = glm::mix(moon, blood, dayNight.bloodMoonFade) * glm::smoothstep(-0.02f, 0.15f, -height);
+	}
+	level.sunDirection = -glm::normalize(toLight); // the level stores the direction light travels
+	level.sunColor = color;
+	level.ambient = glm::mix(0.05f, 0.30f, day) + twilight * 0.04f;
+
+	glm::vec3 nightSky = glm::mix(glm::vec3(0.02f, 0.03f, 0.07f), glm::vec3(0.16f, 0.015f, 0.02f), dayNight.bloodMoonFade);
+	glm::vec3 daySky(0.36f, 0.50f, 0.70f), duskSky(0.45f, 0.20f, 0.12f);
+	renderSettings.clearColor = glm::mix(nightSky, daySky, day) + duskSky * twilight * 0.6f;
+
+}
+
+void IsoMateric::updateWeather(float dt)
+{
+	const float target = weather.raining ? weather.rainIntensity : 0.0f;
+	rain.update(dt, level, camera.focus, target, weather.wind, rng);
+
+	// surfaces get wet within a few seconds and dry out slowly
+	float& wet = renderSettings.wetness;
+	float rate = target > wet ? 0.6f : 0.08f;
+	wet += (target - wet) * (1.0f - std::exp(-dt * rate));
+	audio.setLoop("rain", target * 0.8f);
+
+	renderSettings.time = elapsed;
+	renderSettings.fogFocus = camera.focus;
+	if (weather.fogFollowsSky)
+		renderSettings.fogColor = glm::min(renderSettings.clearColor * 1.25f + glm::vec3(0.04f), glm::vec3(1.0f));
+}
+
+void IsoMateric::drawLabels()
+{
+	// names of glass spheres, projected above each one, behind the ImGui windows
+	ImDrawList* draw = ImGui::GetBackgroundDrawList();
+	const glm::mat4 vp = camera.viewProjection();
+	const float viewW = static_cast<float>(windowW) - viewX;
+	for (auto [entity, t, g, name] : registry.view<Transform, Glass, Name>().each())
+	{
+		glm::vec4 clip = vp * glm::vec4(t.position + glm::vec3(0.0f, g.radius + 0.15f, 0.0f), 1.0f);
+		if (clip.w <= 0.0f)
+			continue;
+		glm::vec2 ndc = glm::vec2(clip) / clip.w;
+		ImVec2 size = ImGui::CalcTextSize(name.value.c_str());
+		ImVec2 pos(viewX + (ndc.x * 0.5f + 0.5f) * viewW - size.x * 0.5f, (0.5f - ndc.y * 0.5f) * static_cast<float>(windowH) - size.y);
+		if (pos.x + size.x < viewX)
+			continue;
+		draw->AddRectFilled(ImVec2(pos.x - 3, pos.y - 1), ImVec2(pos.x + size.x + 3, pos.y + size.y + 1), IM_COL32(0, 0, 0, 140), 3.0f);
+		draw->AddText(pos, IM_COL32(255, 255, 255, 230), name.value.c_str());
 	}
 }
 
@@ -579,6 +754,8 @@ void IsoMateric::drawUi(float frameTime)
 	{
 		ImGui::Checkbox("Shadows", &renderSettings.shadows);
 		ImGui::SameLine();
+		ImGui::Checkbox("Labels", &showLabels);
+		ImGui::SameLine();
 		ImGui::Checkbox("See-through walls", &renderSettings.cutaway);
 		if (renderSettings.cutaway)
 			ImGui::SliderFloat("Window radius", &renderSettings.cutawayRadius, 0.5f, 4.0f, "%.1f blocks");
@@ -591,6 +768,62 @@ void IsoMateric::drawUi(float frameTime)
 		{
 			renderer.reloadShaders();
 			scripts->load(scripts->path());
+		}
+	}
+
+	if (ImGui::CollapsingHeader("Day / night", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		if (ImGui::Button(dayNight.running ? "Stop day/night cycle" : "Start day/night cycle"))
+			setDayNight(!dayNight.running);
+		int hh = static_cast<int>(dayNight.hour);
+		int mm = static_cast<int>((dayNight.hour - static_cast<float>(hh)) * 60.0f);
+		ImGui::SameLine();
+		ImGui::Text("%02d:%02d", hh, mm);
+		if (ImGui::SliderFloat("Time of day", &dayNight.hour, 0.0f, 24.0f, "%.1f h") && dayNight.running)
+			applyDayNight();
+		ImGui::SliderFloat("Speed", &dayNight.speed, 0.05f, 6.0f, "%.2f h/s", ImGuiSliderFlags_Logarithmic);
+		if (ImGui::Button(dayNight.bloodMoon ? "End blood moon" : "Trigger blood moon"))
+		{
+			if (dayNight.bloodMoon)
+			{
+				setBloodMoon(false);
+			}
+			else
+			{
+				if (!dayNight.running || (dayNight.hour > 5.0f && dayNight.hour < 19.0f))
+					dayNight.hour = 20.5f; // jump to the evening so it is visible
+				setDayNight(true);
+				setBloodMoon(true);
+			}
+		}
+		if (dayNight.bloodMoon)
+		{
+			ImGui::SameLine();
+			ImGui::TextColored(ImVec4(1.0f, 0.25f, 0.2f, 1.0f), "the blood moon is up");
+		}
+		ImGui::SliderFloat("Blood moon chance", &dayNight.bloodMoonChance, 0.0f, 1.0f, "%.2f per night");
+		if (!dayNight.running)
+			ImGui::TextDisabled("stopping restores the level's own sun");
+	}
+
+	if (ImGui::CollapsingHeader("Weather", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		ImGui::Checkbox("Rain", &weather.raining);
+		if (weather.raining)
+		{
+			ImGui::SliderFloat("Intensity", &weather.rainIntensity, 0.05f, 1.0f);
+			ImGui::DragFloat2("Wind", &weather.wind.x, 0.05f, -8.0f, 8.0f);
+		}
+		ImGui::Text("Wetness %.2f  |  %d drops", renderSettings.wetness, static_cast<int>(rain.drops.size()));
+		ImGui::Checkbox("Fog / mist", &renderSettings.fog);
+		if (renderSettings.fog)
+		{
+			ImGui::SliderFloat("Mist density", &renderSettings.fogDensity, 0.0f, 3.0f);
+			ImGui::SliderFloat("Mist height", &renderSettings.fogHeight, 0.1f, 4.0f, "%.1f blocks");
+			ImGui::SliderFloat("Distance haze", &renderSettings.fogDistance, 0.0f, 0.15f, "%.3f");
+			ImGui::Checkbox("Fog color follows sky", &weather.fogFollowsSky);
+			if (!weather.fogFollowsSky)
+				ImGui::ColorEdit3("Fog color", &renderSettings.fogColor.x);
 		}
 	}
 
@@ -631,6 +864,16 @@ void IsoMateric::drawUi(float frameTime)
 				ImGui::SameLine();
 				if (ImGui::SmallButton("x"))
 					toDestroy = entity;
+			}
+			if (auto* g = registry.try_get<Glass>(entity); g && ImGui::TreeNode("glass"))
+			{
+				ImGui::SliderFloat("IOR", &g->ior, 1.0f, 2.6f);
+				ImGui::SliderFloat("Roughness", &g->roughness, 0.0f, 1.0f);
+				ImGui::SliderFloat("Absorption", &g->absorption, 0.0f, 6.0f);
+				ImGui::SliderFloat("Dispersion", &g->dispersion, 0.0f, 0.15f);
+				ImGui::ColorEdit3("Tint", &g->tint.x);
+				ImGui::SliderFloat("Radius", &g->radius, 0.1f, 1.5f);
+				ImGui::TreePop();
 			}
 			ImGui::PopID();
 		}
@@ -691,7 +934,15 @@ void IsoMateric::drawUi(float frameTime)
 	{
 		ImGui::InputText("File", levelPathBuffer, sizeof(levelPathBuffer));
 		if (ImGui::Button("Save"))
+		{
+			// save the level's own sun, not the cycle's current one
+			bool cycling = dayNight.running;
+			float hour = dayNight.hour;
+			setDayNight(false);
 			level.save(levelPathBuffer);
+			dayNight.hour = hour;
+			setDayNight(cycling);
+		}
 		ImGui::SameLine();
 		if (ImGui::Button("Load"))
 			loadLevel(levelPathBuffer);
@@ -705,7 +956,10 @@ void IsoMateric::drawUi(float frameTime)
 			fresh.sunDirection = level.sunDirection;
 			fresh.sunColor = level.sunColor;
 			fresh.ambient = level.ambient;
+			bool cycling = dayNight.running;
+			setDayNight(false);
 			level = std::move(fresh);
+			setDayNight(cycling);
 			resetPlayer();
 		}
 	}

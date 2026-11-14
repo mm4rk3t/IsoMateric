@@ -83,6 +83,8 @@ private:
 	int newLevelSize[2] = {16, 16};
 
 	bool jumpRequested = false;
+	bool mouseLooking = false; // first person: cursor captured while a look button is held
+	void setMouseLook(bool on);
 	Player::Events pendingEvents;
 	bool showDebug = true;
 	bool followPlayer = false;
@@ -117,6 +119,17 @@ private:
 	} weather;
 	Rain rain;
 	void updateWeather(float dt);
+	void updateSky();
+
+	// decorative block asteroids orbiting the level (count comes from the level file)
+	struct Asteroid
+	{
+		float orbitRadius, angle, speed, height, bobPhase;
+		std::vector<std::pair<glm::vec3, float>> parts; // offset, cube size
+		glm::vec3 color;
+	};
+	std::vector<Asteroid> asteroids;
+	void generateAsteroids();
 	float reloadTimer = 0.0f;
 	float fpsSmoothed = 0.0f;
 	float elapsed = 0.0f;

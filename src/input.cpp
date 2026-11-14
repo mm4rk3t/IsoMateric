@@ -16,6 +16,7 @@ Input::Input()
 	bind(Action::ToggleFollow, {GLFW_KEY_T});
 	bind(Action::ToggleDebug,  {GLFW_KEY_F2});
 	bind(Action::ToggleEditor, {GLFW_KEY_TAB});
+	bind(Action::CycleCamera,  {GLFW_KEY_V});
 }
 
 void Input::bind(Action action, std::initializer_list<int> keyList)

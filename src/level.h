@@ -32,10 +32,18 @@ public:
 	bool inBounds(int x, int z) const { return x >= 0 && z >= 0 && x < sizeX && z < sizeZ; }
 	int height(int x, int z) const { return inBounds(x, z) ? heights[index(x, z)] : 0; }
 	void setHeight(int x, int z, int h);
-	bool standable(int x, int z) const { return height(x, z) >= 1; }
+	bool standable(int x, int z) const { return height(x, z) >= 1 && !isTrunk(x, z); }
+	// an endless tree trunk passing through the level: solid at every height
+	bool isTrunk(int x, int z) const
+	{
+		for (const glm::ivec2& t : trunks)
+			if (t.x == x && t.y == z)
+				return true;
+		return false;
+	}
 	float surface(int x, int z) const { return static_cast<float>(height(x, z)) - 0.5f; }
 	// solid block test used by collision; outside the level counts as an endless wall
-	bool solid(int x, int y, int z) const { return !inBounds(x, z) || (y >= 0 && y < height(x, z)); }
+	bool solid(int x, int y, int z) const { return !inBounds(x, z) || isTrunk(x, z) || (y >= 0 && y < height(x, z)); }
 	int maxHeight() const;
 
 	int sizeX = 0, sizeZ = 0;
@@ -46,6 +54,11 @@ public:
 	glm::vec3 sunColor{0.992f, 0.239f, 0.251f};
 	float ambient = 0.058f;
 	std::vector<PointLight> lights;
+
+	std::string sky = "plain";                  // "plain", "atmosphere" or "galaxy"
+	std::string script = "scripts/game.lua";    // Lua script, relative to assets/
+	int asteroids = 0;                          // drifting rocks around the level
+	std::vector<glm::ivec2> trunks;             // endless tree trunks (x, z)
 
 private:
 	int index(int x, int z) const { return x * sizeZ + z; }

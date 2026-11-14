@@ -17,6 +17,36 @@ void Camera::setViewport(int width, int height)
 	viewportH = height > 0 ? height : 1;
 }
 
+void Camera::setMode(Mode m)
+{
+	if (m == currentMode)
+		return;
+	currentMode = m;
+	if (m == Mode::FirstPerson)
+	{
+		yaw = yawGoal; // finish any rotation and keep facing the same way
+		lookPitch = 0.1f;
+	}
+	else
+	{
+		// back to isometric: ease to the nearest of the four diagonal views
+		const float quarter = glm::radians(90.0f);
+		yawGoal = kBaseYaw + std::round((yaw - kBaseYaw) / quarter) * quarter;
+	}
+}
+
+void Camera::look(float dYaw, float dPitch)
+{
+	yaw += dYaw;
+	yawGoal = yaw;
+	lookPitch = glm::clamp(lookPitch + dPitch, -1.45f, 1.45f);
+}
+
+glm::vec3 Camera::eye() const
+{
+	return focus + glm::vec3(0.0f, 0.35f, 0.0f); // focus is the player's centre; eyes sit higher
+}
+
 void Camera::rotate(int steps)
 {
 	yawGoal += glm::radians(90.0f) * static_cast<float>(steps);
@@ -39,6 +69,8 @@ void Camera::snap()
 
 float Camera::elevation() const
 {
+	if (isPerspective())
+		return lookPitch;
 	return style == Style::Isometric ? std::atan(1.0f / std::sqrt(2.0f)) : glm::radians(30.0f);
 }
 
@@ -50,7 +82,7 @@ glm::vec3 Camera::toCamera() const
 
 glm::vec3 Camera::position() const
 {
-	return focus + toCamera() * distance;
+	return currentMode == Mode::FirstPerson ? eye() : focus + toCamera() * distance;
 }
 
 glm::vec3 Camera::forward() const
@@ -66,6 +98,9 @@ glm::vec3 Camera::right() const
 
 glm::mat4 Camera::view() const
 {
+	if (currentMode == Mode::FirstPerson)
+		return glm::lookAt(position(), position() - toCamera(), glm::vec3(0.0f, 1.0f, 0.0f));
+
 	glm::vec3 target = focus;
 	if (snapUnits > 0.0f)
 	{
@@ -83,6 +118,8 @@ glm::mat4 Camera::view() const
 
 glm::mat4 Camera::projection() const
 {
+	if (isPerspective())
+		return glm::perspective(fieldOfView(), static_cast<float>(viewportW) / static_cast<float>(viewportH), nearPlane(), farPlane());
 	float halfW = static_cast<float>(viewportW) / zoom * 0.5f;
 	float halfH = static_cast<float>(viewportH) / zoom * 0.5f;
 	return glm::ortho(-halfW, halfW, -halfH, halfH, 0.1f, distance * 3.0f);

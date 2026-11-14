@@ -46,6 +46,27 @@ In VS Code: F5 builds and runs under the debugger, Ctrl+Shift+B only builds.
 The debug sidebar on the left (F2 toggles it, drag its right edge to resize) controls the camera style (true isometric or 2:1 dimetric), lighting, the
 pixelizer, point lights, entities, audio volume and the profiler, and saves/loads levels.
 
+## Looks
+
+Everything below is a toggle for trying styles, not something meant to be on all at once. The
+sidebar's **Style presets** switch between Clean 3D, Pixel art, Retro, Cel + ink, Pixel cel + ink,
+Moebius and Dreamy (bloom); each value stays editable afterwards.
+
+- **Shading**: smooth, cel (banded light), or Moebius (two flat tones with ink hatching in shadow)
+- **Ink outlines**: drawn where surface normals turn or depth jumps, so a flat run of blocks stays
+  clean and lines appear only on silhouettes and edges
+- **Bloom**: bright pixels bleed light; applied before the pixelizer so the glow is pixelated too
+- **Sky backdrop** (per level, `sky` line): plain colour, atmosphere (gradient, sun/moon, clouds,
+  a sea of clouds below, stars and comets at night, follows the day/night cycle) or galaxy (Milky
+  Way band, nebulae, a spiral galaxy, stars, comets). The camera is orthographic, so instead of a
+  cubemap the sky is drawn from a virtual view that turns with the camera.
+
+## Camera
+
+Isometric is the default (true isometric or 2:1 dimetric). **V** toggles a first-person view for
+testing; drag with the right or middle mouse to look around. In isometric, walls between the
+camera and the player become see-through.
+
 ## Pixelizer
 
 Renders the scene at `window / pixel size` and scales it up without filtering, so every scene
@@ -105,11 +126,17 @@ spawn 12 3                      # player start tile
 sun -0.4 -1 -0.25  1 0.95 0.85  # direction, colour
 ambient 0.3
 light 5.5 2.5 8  1 0.55 0.25  1.2 6   # position, colour, intensity, radius (max 32)
+sky galaxy                      # plain | atmosphere | galaxy
+script scripts/game.lua         # the level's Lua script
+asteroids 40                    # block asteroids orbiting the level
+trunk 10 10                     # an endless tree trunk through that column
 heights                         # one row per x; 0 = hole, 1 = floor, each extra = one block up
 1 1 1 ...
 ```
 
 The player can climb one block by jumping; falling into a hole respawns them.
+`assets/levels/sky_island.level` is a floating town square in space with a galaxy sky, asteroids
+and an endless tree through the middle.
 
 ## Layout
 

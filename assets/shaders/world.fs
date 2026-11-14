@@ -6,6 +6,7 @@ in vec4 vColor;
 in vec4 vLightSpacePos;
 
 out vec4 FragColor;
+layout (location = 1) out vec4 NormalOut; // for the outline pass
 
 #include "lighting.glsl"
 
@@ -15,6 +16,7 @@ uniform bool cutaway;
 uniform vec3 cutawayCenter;  // player centre
 uniform float cutawayRadius; // world units, measured across the screen
 uniform float cutawayFloor;  // never cut below this height (what the player stands on)
+uniform vec3 cutawayDir;     // from the player towards the camera
 
 const float bayer[16] = float[16](
 	 0.0,  8.0,  2.0, 10.0,
@@ -27,7 +29,7 @@ void main()
 	if (cutaway && vWorldPos.y > cutawayFloor)
 	{
 		vec3 v = vWorldPos - cutawayCenter;
-		vec3 toCam = normalize(viewDir);
+		vec3 toCam = normalize(cutawayDir);
 		float along = dot(v, toCam);
 		if (along > 0.3) // in front of the player, towards the camera
 		{
@@ -39,5 +41,6 @@ void main()
 		}
 	}
 	vec3 lit = shade(vColor.rgb, vWorldPos, vNormal, vLightSpacePos);
+	NormalOut = vec4(normalize(vNormal) * 0.5 + 0.5, 1.0);
 	FragColor = vec4(applyFog(lit, vWorldPos), vColor.a);
 }

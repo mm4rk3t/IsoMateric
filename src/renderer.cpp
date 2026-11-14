@@ -100,7 +100,7 @@ void Renderer::drawSky(const Camera& camera, const RenderSettings& s, bool pixel
 	sky.set("camRight", camera.right());
 	sky.set("time", s.time);
 	sky.set("focus", camera.focus);
-	sky.set("brightness", s.skyBrightness);
+	sky.set("brightness", s.skyBrightness * (1.0f + s.lightningFlash * 1.5f));
 	sky.set("skyTop", s.skyTop);
 	sky.set("skyHorizon", s.skyHorizon);
 	sky.set("nightAmount", s.nightAmount);
@@ -114,6 +114,7 @@ void Renderer::drawSky(const Camera& camera, const RenderSettings& s, bool pixel
 	sky.set("viewForward", viewForward);
 	sky.set("viewUp", glm::cross(viewRight, viewForward));
 	sky.set("tanHalfFov", std::tan(camera.fieldOfView() * 0.5f));
+	sky.set("wind", s.wind);
 	glBindVertexArray(emptyVao);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	drawCalls++;
@@ -281,8 +282,8 @@ void Renderer::drawGlassSphere(const Camera& camera, const Level& level, const G
 	glass.set("cameraPos", camera.position());
 	glass.set("perspective", camera.isPerspective() ? 1 : 0);
 	glass.set("sunDir", glm::normalize(level.sunDirection));
-	glass.set("sunColor", level.sunColor);
-	glass.set("ambient", level.ambient);
+	glass.set("sunColor", flashedSun(level, settings));
+	glass.set("ambient", level.ambient + settings.lightningFlash * 0.35f);
 	glass.set("numLights", lightCount);
 	glass.set("grab", 2);
 	glass.set("viewOrigin", glm::vec3(static_cast<float>(pixelate ? 0 : viewX), 0.0f, 0.0f));
@@ -529,13 +530,19 @@ void Renderer::setLighting(Shader& shader, const Camera& camera, const Level& le
 	shader.set("cameraPos", camera.position());
 	shader.set("perspective", camera.isPerspective() ? 1 : 0);
 	shader.set("sunDir", glm::normalize(level.sunDirection));
-	shader.set("sunColor", level.sunColor);
-	shader.set("ambient", level.ambient);
+	shader.set("sunColor", flashedSun(level, settings));
+	shader.set("ambient", level.ambient + settings.lightningFlash * 0.35f);
 	shader.set("numLights", lightCount);
 	shader.set("shadowsEnabled", settings.shadows ? 1 : 0);
 	shader.set("shadowMap", 0);
 	shader.set("shadowNormalOffset", shadowTexelWorld * 1.5f);
 	setWeather(shader, settings);
+}
+
+glm::vec3 Renderer::flashedSun(const Level& level, const RenderSettings& settings) const
+{
+	// lightning lights the world from the sun's direction for a moment, cold and bright
+	return level.sunColor + glm::vec3(0.75f, 0.82f, 1.0f) * settings.lightningFlash * 1.6f;
 }
 
 void Renderer::setWeather(Shader& shader, const RenderSettings& settings)
@@ -575,6 +582,7 @@ void Renderer::rebuildGrass(const Level& level, const RenderSettings& settings)
 	mix(static_cast<unsigned long long>(level.sizeZ));
 	mix(static_cast<unsigned long long>(settings.grassDensity));
 	mix(static_cast<unsigned long long>(settings.grassHeight * 1000.0f));
+	mix(static_cast<unsigned long long>(settings.grassDry * 1000.0f));
 	for (size_t i = 0; i < level.tiles.size(); i++)
 		mix(level.tiles[i] == 'g' ? static_cast<unsigned long long>(level.heights[i]) + 1 : 0);
 	for (const glm::ivec2& t : level.trunks)
@@ -585,7 +593,11 @@ void Renderer::rebuildGrass(const Level& level, const RenderSettings& settings)
 
 	std::vector<GrassBlade> blades;
 	std::uniform_real_distribution<float> u(0.0f, 1.0f);
-	const glm::vec3 dark(0.15f, 0.30f, 0.12f), light(0.40f, 0.60f, 0.26f), dry(0.55f, 0.55f, 0.28f);
+	// lush palette, withered towards straw and grey-brown as grassDry rises
+	const float wither = glm::clamp(settings.grassDry, 0.0f, 1.0f);
+	const glm::vec3 dark = glm::mix(glm::vec3(0.15f, 0.30f, 0.12f), glm::vec3(0.20f, 0.18f, 0.12f), wither);
+	const glm::vec3 light = glm::mix(glm::vec3(0.40f, 0.60f, 0.26f), glm::vec3(0.48f, 0.44f, 0.30f), wither);
+	const glm::vec3 dry = glm::mix(glm::vec3(0.55f, 0.55f, 0.28f), glm::vec3(0.30f, 0.29f, 0.27f), wither);
 	for (int x = 0; x < level.sizeX; x++)
 	{
 		for (int z = 0; z < level.sizeZ; z++)
@@ -602,7 +614,7 @@ void Renderer::rebuildGrass(const Level& level, const RenderSettings& settings)
 				b.shape = glm::vec4((0.16f + 0.26f * tall * tall) * settings.grassHeight, 0.035f + 0.03f * u(rng), u(rng) * glm::two_pi<float>(),
 				                    u(rng) * glm::two_pi<float>());
 				glm::vec3 c = glm::mix(dark, light, u(rng));
-				if (u(rng) < 0.08f)
+				if (u(rng) < 0.08f + 0.2f * wither)
 					c = glm::mix(c, dry, 0.7f); // the odd dry blade
 				b.color = c;
 				blades.push_back(b);
@@ -717,7 +729,10 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 
 	// pixelizer: draw the scene into a low-res target, upscale at the end
 	// offscreen when pixelating or drawing outlines (they need the depth as a texture)
-	const bool pixelate = settings.pixelSize > 1 || settings.outlines;
+	const bool finalPass = settings.grading || settings.vignette > 0.0f || settings.grain > 0.0f || settings.godRays;
+	raysMin = frame.boundsMin - glm::vec3(2.0f, 0.0f, 2.0f);
+	raysMax = frame.boundsMax + glm::vec3(2.0f, 3.0f, 2.0f); // some air above the tallest column
+	const bool pixelate = settings.pixelSize > 1 || settings.outlines || finalPass;
 	const int pixelSize = std::max(1, settings.pixelSize);
 	if (pixelate)
 	{
@@ -749,7 +764,16 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	{
 		const PointLight& l = level.lights[i];
 		block.positionRadius[i] = glm::vec4(l.position, std::max(l.radius, 0.01f));
-		block.colorIntensity[i] = glm::vec4(l.color, l.intensity);
+		float flicker = 1.0f;
+		if (settings.lightFlicker > 0.0f)
+		{
+			// a few unrelated sines per light: reads as a flame, never as a pulse
+			const float t = settings.time, k = static_cast<float>(i);
+			float n = 0.5f * std::sin(t * 9.1f + k * 7.3f) + 0.3f * std::sin(t * 17.7f + k * 2.1f) + 0.2f * std::sin(t * 31.3f + k * 5.7f);
+			float dip = std::max(0.0f, std::sin(t * 2.3f + k * 11.0f) - 0.92f) * 6.0f; // the odd gutter
+			flicker = std::max(0.05f, 1.0f + settings.lightFlicker * (0.3f * n - 0.5f * dip));
+		}
+		block.colorIntensity[i] = glm::vec4(l.color, l.intensity * flicker);
 	}
 	glBindBuffer(GL_UNIFORM_BUFFER, lightUbo);
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightBlock), &block);
@@ -873,6 +897,32 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 		post.set("nearPlane", camera.nearPlane());
 		post.set("farPlane", camera.farPlane());
 		post.set("perspective", camera.isPerspective() ? 1 : 0);
+		post.set("grading", settings.grading ? 1 : 0);
+		post.set("saturation", settings.saturation);
+		post.set("contrast", settings.contrast);
+		post.set("shadowTint", settings.shadowTint);
+		post.set("highlightTint", settings.highlightTint);
+		post.set("vignette", settings.vignette);
+		post.set("grain", settings.grain);
+		post.set("time", settings.time);
+		post.set("godRays", settings.godRays ? 1 : 0);
+		if (settings.godRays)
+		{
+			post.set("invViewProj", glm::inverse(projection * view));
+			post.set("lightSpace", lightSpace);
+			post.set("shadowMap", 4);
+			post.set("shadowsEnabled", settings.shadows ? 1 : 0);
+			post.set("sunDir", glm::normalize(level.sunDirection));
+			post.set("sunColor", flashedSun(level, settings));
+			post.set("raysMin", raysMin);
+			post.set("raysMax", raysMax);
+			post.set("rayBase", settings.fogBase);
+			post.set("rayFalloff", 1.5f + settings.fogHeight);
+			post.set("godRayStrength", settings.godRayStrength);
+			post.set("godRaySteps", std::clamp(settings.godRaySteps, 4, 64));
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, shadowTex);
+		}
 		glActiveTexture(GL_TEXTURE3);
 		glBindTexture(GL_TEXTURE_2D, sceneNormal);
 		glActiveTexture(GL_TEXTURE1);

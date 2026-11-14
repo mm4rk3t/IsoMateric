@@ -514,6 +514,13 @@ void IsoMateric::buildFrame(FrameData& frame)
 	frame.boundsMax = glm::vec3(static_cast<float>(level.sizeX) - 0.5f, static_cast<float>(maxH) - 0.5f,
 	                            static_cast<float>(level.sizeZ) - 0.5f);
 
+	// grass ground withers along with the blades
+	auto columnColor = [&](int x, int y, int z) {
+		glm::vec3 c = blockColor(level, x, y, z);
+		if (level.tile(x, z) == 'g' && renderSettings.grassDry > 0.0f)
+			c = glm::mix(c, glm::vec3(0.36f, 0.32f, 0.23f) * (0.9f + 0.15f * tileNoise(x, z)), glm::clamp(renderSettings.grassDry, 0.0f, 1.0f));
+		return c;
+	};
 	for (int x = 0; x < level.sizeX; x++)
 	{
 		for (int z = 0; z < level.sizeZ; z++)
@@ -523,10 +530,10 @@ void IsoMateric::buildFrame(FrameData& frame)
 			const int h = level.height(x, z);
 			const float fx = static_cast<float>(x), fz = static_cast<float>(z);
 			if (h >= 1)
-				frame.opaque.push_back({glm::vec3(fx, 0.0f, fz), glm::vec3(1.0f), glm::vec4(blockColor(level, x, 0, z), 1.0f)});
+				frame.opaque.push_back({glm::vec3(fx, 0.0f, fz), glm::vec3(1.0f), glm::vec4(columnColor(x, 0, z), 1.0f)});
 			if (h >= 2)
 				frame.opaque.push_back({glm::vec3(fx, static_cast<float>(h) * 0.5f, fz), glm::vec3(1.0f, static_cast<float>(h - 1), 1.0f),
-				                        glm::vec4(blockColor(level, x, h - 1, z), 1.0f)});
+				                        glm::vec4(columnColor(x, h - 1, z), 1.0f)});
 		}
 	}
 
@@ -800,6 +807,32 @@ void IsoMateric::updateWeather(float dt)
 	wet += (target - wet) * (1.0f - std::exp(-dt * rate));
 	audio.setLoop("rain", target * 0.8f);
 
+	// lightning: a few rapid flickers, thunder a moment later
+	Weather& w = weather;
+	if (w.raining && w.lightning)
+	{
+		w.lightningTimer -= dt;
+		if (w.lightningTimer <= 0.0f)
+			strikeLightning();
+	}
+	float flash = 0.0f;
+	if (w.flashAge >= 0.0f)
+	{
+		w.flashAge += dt;
+		const float t = w.flashAge;
+		// main bolt, a dimmer re-strike, a faint last flicker
+		flash = std::exp(-t * 14.0f) + 0.6f * std::exp(-std::max(t - 0.14f, 0.0f) * 18.0f) * (t > 0.14f ? 1.0f : 0.0f) +
+		        0.3f * std::exp(-std::max(t - 0.32f, 0.0f) * 10.0f) * (t > 0.32f ? 1.0f : 0.0f);
+		if (!w.thunderPlayed && t >= w.thunderDelay)
+		{
+			audio.play("thunder", 0.9f - 0.25f * w.thunderDelay / 2.5f);
+			w.thunderPlayed = true;
+		}
+		if (t > 3.0f && w.thunderPlayed)
+			w.flashAge = -1.0f;
+	}
+	renderSettings.lightningFlash = std::min(flash, 1.0f);
+
 	renderSettings.time = elapsed;
 	renderSettings.wind = glm::vec3(weather.wind.x, 0.0f, weather.wind.y);
 	renderSettings.grassPusher = player().feet();
@@ -808,10 +841,20 @@ void IsoMateric::updateWeather(float dt)
 		renderSettings.fogColor = glm::min(renderSettings.clearColor * 1.25f + glm::vec3(0.04f), glm::vec3(1.0f));
 }
 
+void IsoMateric::strikeLightning()
+{
+	std::uniform_real_distribution<float> u(0.0f, 1.0f);
+	weather.flashAge = 0.0f;
+	weather.thunderDelay = 0.2f + u(rng) * 2.3f; // how far away the bolt was
+	weather.thunderPlayed = false;
+	// heavier rain, more frequent strikes
+	weather.lightningTimer = (5.0f + u(rng) * 14.0f) * (1.4f - weather.rainIntensity);
+}
+
 void IsoMateric::updateSky()
 {
 	RenderSettings& rs = renderSettings;
-	rs.sky = level.sky == "galaxy" ? 2 : level.sky == "atmosphere" ? 1 : 0;
+	rs.sky = level.sky == "galaxy" ? 2 : level.sky == "atmosphere" ? 1 : level.sky == "overcast" ? 3 : 0;
 	rs.bloodMoon = dayNight.bloodMoonFade;
 	if (!dayNight.running)
 	{
@@ -829,6 +872,8 @@ void IsoMateric::updateSky()
 			rs.fogColor = glm::vec3(0.06f, 0.04f, 0.11f);
 		else if (rs.sky == 1)
 			rs.fogColor = rs.skyHorizon;
+		else if (rs.sky == 3)
+			rs.fogColor = glm::max(rs.skyHorizon * 0.8f, glm::vec3(0.17f, 0.18f, 0.21f)); // grey murk, never black
 	}
 }
 
@@ -1007,10 +1052,10 @@ void IsoMateric::drawUi(float frameTime)
 
 	if (ImGui::CollapsingHeader("Sky", ImGuiTreeNodeFlags_DefaultOpen))
 	{
-		int skyMode = level.sky == "galaxy" ? 2 : level.sky == "atmosphere" ? 1 : 0;
-		const char* skies[] = {"Plain colour", "Atmosphere (day/night)", "Galaxy"};
-		if (ImGui::Combo("Backdrop", &skyMode, skies, 3))
-			level.sky = skyMode == 2 ? "galaxy" : skyMode == 1 ? "atmosphere" : "plain";
+		int skyMode = level.sky == "galaxy" ? 2 : level.sky == "atmosphere" ? 1 : level.sky == "overcast" ? 3 : 0;
+		const char* skies[] = {"Plain colour", "Atmosphere (day/night)", "Galaxy", "Overcast (wind-driven)"};
+		if (ImGui::Combo("Backdrop", &skyMode, skies, 4))
+			level.sky = skyMode == 3 ? "overcast" : skyMode == 2 ? "galaxy" : skyMode == 1 ? "atmosphere" : "plain";
 		if (skyMode != 0)
 		{
 			ImGui::SliderFloat("Sky brightness", &renderSettings.skyBrightness, 0.2f, 2.0f);
@@ -1050,6 +1095,40 @@ void IsoMateric::drawUi(float frameTime)
 			preset(1, 0, false, 2, true, false);
 		if (ImGui::Button("Dreamy (bloom)"))
 			preset(3, 0, false, 0, false, true);
+		ImGui::SameLine();
+		if (ImGui::Button("Gothic"))
+		{
+			// cold, desaturated and murky: overcast sky, withered grass, low mist
+			preset(3, 0, false, 0, false, true);
+			rs.bloomThreshold = 0.8f;
+			rs.bloomIntensity = 0.5f;
+			rs.grading = true;
+			rs.saturation = 0.55f;
+			rs.contrast = 1.15f;
+			rs.shadowTint = glm::vec3(0.80f, 0.92f, 1.05f);
+			rs.highlightTint = glm::vec3(1.10f, 0.98f, 0.82f);
+			rs.vignette = 0.6f;
+			rs.grain = 0.06f;
+			rs.grassDry = 0.75f;
+			rs.lightFlicker = 0.6f;
+			rs.godRays = true;
+			rs.shadows = true;
+			weather.lightning = true;
+			rs.fog = true;
+			rs.fogDensity = 0.8f;
+			rs.fogHeight = 1.2f;
+			rs.fogDistance = 0.04f;
+			weather.fogFollowsSky = true;
+			level.sky = "overcast";
+		}
+		if (ImGui::Button("Reset grade"))
+		{
+			rs.grading = false;
+			rs.saturation = rs.contrast = 1.0f;
+			rs.shadowTint = rs.highlightTint = glm::vec3(1.0f);
+			rs.vignette = rs.grain = rs.grassDry = rs.lightFlicker = 0.0f;
+			rs.godRays = false;
+		}
 	}
 
 	if (ImGui::CollapsingHeader("Shading style"))
@@ -1064,6 +1143,33 @@ void IsoMateric::drawUi(float frameTime)
 			ImGui::SliderFloat("Line width", &renderSettings.outlineWidth, 1.0f, 3.0f, "%.0f px");
 			ImGui::ColorEdit3("Line colour", &renderSettings.outlineColor.x);
 		}
+	}
+
+	if (ImGui::CollapsingHeader("Light & atmosphere"))
+	{
+		ImGui::SliderFloat("Flame flicker", &renderSettings.lightFlicker, 0.0f, 1.0f);
+		ImGui::Checkbox("God rays", &renderSettings.godRays);
+		if (renderSettings.godRays)
+		{
+			ImGui::SliderFloat("Ray strength", &renderSettings.godRayStrength, 0.0f, 2.0f);
+			ImGui::SliderInt("Ray quality", &renderSettings.godRaySteps, 8, 64, "%d steps");
+			if (!renderSettings.shadows)
+				ImGui::TextDisabled("needs shadows on for shafts");
+		}
+	}
+
+	if (ImGui::CollapsingHeader("Colour grade"))
+	{
+		ImGui::Checkbox("Grading", &renderSettings.grading);
+		if (renderSettings.grading)
+		{
+			ImGui::SliderFloat("Saturation", &renderSettings.saturation, 0.0f, 1.5f);
+			ImGui::SliderFloat("Contrast", &renderSettings.contrast, 0.5f, 1.8f);
+			ImGui::ColorEdit3("Shadow tint", &renderSettings.shadowTint.x, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+			ImGui::ColorEdit3("Highlight tint", &renderSettings.highlightTint.x, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+		}
+		ImGui::SliderFloat("Vignette", &renderSettings.vignette, 0.0f, 1.0f);
+		ImGui::SliderFloat("Film grain", &renderSettings.grain, 0.0f, 0.25f);
 	}
 
 	if (ImGui::CollapsingHeader("Bloom"))
@@ -1082,12 +1188,19 @@ void IsoMateric::drawUi(float frameTime)
 			weather.wind = glm::vec2(0.0f);
 		ImGui::Checkbox("Rain", &weather.raining);
 		if (weather.raining)
+		{
 			ImGui::SliderFloat("Intensity", &weather.rainIntensity, 0.05f, 1.0f);
+			ImGui::Checkbox("Lightning", &weather.lightning);
+			ImGui::SameLine();
+			if (ImGui::SmallButton("Strike now"))
+				strikeLightning();
+		}
 		ImGui::Checkbox("Grass", &renderSettings.grass);
 		if (renderSettings.grass)
 		{
 			ImGui::SliderInt("Blades per tile", &renderSettings.grassDensity, 4, 96);
 			ImGui::SliderFloat("Blade height", &renderSettings.grassHeight, 0.3f, 2.5f, "%.1fx");
+			ImGui::SliderFloat("Withered", &renderSettings.grassDry, 0.0f, 1.0f);
 		}
 		ImGui::Text("Wetness %.2f  |  %d drops", renderSettings.wetness, static_cast<int>(rain.drops.size()));
 		ImGui::Checkbox("Fog / mist", &renderSettings.fog);

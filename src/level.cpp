@@ -121,8 +121,8 @@ bool Level::load(const std::string& path)
 		}
 		else if (key == "sky")
 		{
-			if (!(in >> result.sky) || (result.sky != "plain" && result.sky != "atmosphere" && result.sky != "galaxy"))
-				return fail("sky must be plain, atmosphere or galaxy");
+			if (!(in >> result.sky) || (result.sky != "plain" && result.sky != "atmosphere" && result.sky != "galaxy" && result.sky != "overcast"))
+				return fail("sky must be plain, atmosphere, galaxy or overcast");
 		}
 		else if (key == "script")
 		{

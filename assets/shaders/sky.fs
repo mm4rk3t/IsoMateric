@@ -6,6 +6,8 @@
 // a small offset for parallax.
 //   mode 1: atmosphere - gradient, sun/moon disc, clouds above, a sea of clouds below,
 //           stars and comets at night (driven by the day/night cycle)
+//   mode 3: overcast   - a low, heavy cloud deck drifting with the wind, the sun or moon
+//           only a diffuse glow through it; dark gothic weather
 //   mode 2: galaxy     - Milky Way band with dust lanes, nebulae, a distant spiral galaxy,
 //           three star layers and comets
 
@@ -31,6 +33,7 @@ uniform bool realView;       // perspective camera: use the actual view rays
 uniform vec3 viewForward;    // full 3D forward / up of the perspective camera
 uniform vec3 viewUp;
 uniform float tanHalfFov;
+uniform vec3 wind;           // (x, 0, z): the overcast deck drifts with it
 
 const float PI = 3.14159265;
 
@@ -200,6 +203,41 @@ vec3 galaxy(vec3 d)
 	return col;
 }
 
+vec3 overcast(vec3 d, vec2 pan)
+{
+	vec3 low = mix(skyHorizon, skyTop, 0.5) * 0.6;   // underside of the deck
+	vec3 col;
+	vec2 drift = time * (wind.xz * 0.012 + vec2(0.004, 0.002));
+	if (d.y >= -0.02)
+	{
+		vec2 uv = d.xz / (max(d.y, 0.0) + 0.12) + pan * 0.03;
+		float big = fbm(vec3(uv * 0.35 + drift, 2.0));
+		float rag = fbm(vec3(uv * 1.1 + drift * 1.8, 7.0));
+		float thick = clamp(big * 1.2 + rag * 0.5 - 0.35, 0.0, 1.0);
+		vec3 thin = mix(skyHorizon, skyTop, pow(max(d.y, 0.0), 0.6)) * 0.85;
+		col = mix(thin, low * (0.7 + 0.5 * rag), smoothstep(0.15, 0.7, thick));
+
+		// the sun or moon only as a soft bright patch where the deck is thinner
+		float c = max(dot(d, normalize(celestialDir)), 0.0);
+		vec3 lightColor = nightAmount > 0.5 ? mix(vec3(0.75, 0.8, 0.95), vec3(1.0, 0.15, 0.08), bloodMoon) : celestialColor + 0.15;
+		float glow = pow(c, 40.0) * 0.9 + pow(c, 6.0) * 0.18;
+		col += lightColor * glow * (1.0 - 0.7 * thick);
+		// silver lining on the ragged edges facing the light
+		col += lightColor * pow(c, 12.0) * smoothstep(0.35, 0.5, rag) * (1.0 - smoothstep(0.5, 0.65, rag)) * 0.5;
+
+		// the odd star through a gap at night
+		col += stars(d) * nightAmount * (1.0 - smoothstep(0.05, 0.35, thick)) * smoothstep(0.0, 0.2, d.y);
+	}
+	else
+	{
+		col = skyHorizon * 0.7;
+	}
+	// murky haze towards the horizon and below
+	float haze = 1.0 - smoothstep(-0.25, 0.25, d.y);
+	col = mix(col, skyHorizon * 0.65, haze);
+	return col;
+}
+
 void main()
 {
 	// virtual perspective view: horizontal forward pitched up a little, 80 degree fov
@@ -219,6 +257,6 @@ void main()
 		d = normalize(viewForward + ndc.x * tanHalfFov * aspect * r + ndc.y * tanHalfFov * viewUp);
 	}
 
-	vec3 col = mode == 2 ? galaxy(d) : atmosphere(d, pan);
+	vec3 col = mode == 2 ? galaxy(d) : mode == 3 ? overcast(d, pan) : atmosphere(d, pan);
 	FragColor = vec4(col * brightness, 1.0);
 }

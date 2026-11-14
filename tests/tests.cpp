@@ -6,6 +6,7 @@
 #include "particles.h"
 #include "pathfinding.h"
 #include "player.h"
+#include "weather.h"
 
 #include <cmath>
 #include <cstdio>
@@ -231,8 +232,37 @@ static void testParticlesRate()
 	CHECK(n >= 59 && n <= 61);
 }
 
+static void testRainDensityAndSplashes()
+{
+	Level level = Level::flat(20, 20);
+	Rain rain;
+	std::mt19937 rng(5);
+	glm::vec3 center(10.0f, 1.0f, 10.0f);
+	rain.update(0.016f, level, center, 0.5f, {0.0f, 0.0f}, rng);
+	CHECK(rain.drops.size() == static_cast<size_t>(rain.maxDrops / 2));
+
+	int hits = 0;
+	for (int i = 0; i < 120; i++)
+	{
+		rain.update(1.0f / 60.0f, level, center, 0.5f, {1.0f, 0.0f}, rng);
+		hits += rain.hitsLastUpdate;
+		for (const Rain::Drop& d : rain.drops) // never below a block top it is over
+		{
+			int tx = static_cast<int>(std::floor(d.position.x + 0.5f)), tz = static_cast<int>(std::floor(d.position.z + 0.5f));
+			if (level.standable(tx, tz))
+				CHECK(d.position.y > level.surface(tx, tz));
+		}
+	}
+	CHECK(hits > 0);
+	CHECK(!rain.splashes.empty());
+
+	rain.update(0.016f, level, center, 0.0f, {0.0f, 0.0f}, rng); // rain stops
+	CHECK(rain.drops.empty());
+}
+
 int main()
 {
+	testRainDensityAndSplashes();
 	testGravityLands();
 	testJumpOntoBlock();
 	testCannotJumpTwoBlocks();

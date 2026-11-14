@@ -38,5 +38,6 @@ void main()
 				discard;
 		}
 	}
-	FragColor = vec4(shade(vColor.rgb, vWorldPos, vNormal, vLightSpacePos), vColor.a);
+	vec3 lit = shade(vColor.rgb, vWorldPos, vNormal, vLightSpacePos);
+	FragColor = vec4(applyFog(lit, vWorldPos), vColor.a);
 }

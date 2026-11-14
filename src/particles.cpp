@@ -43,6 +43,22 @@ ParticleEmitter particlePreset(const std::string& name)
 		e.colorEnd = {0.3f, 0.5f, 1.0f, 0.0f};
 		e.additive = true;
 	}
+	else if (name == "ash")
+	{
+		// wide, slow, glowing red flakes falling over the whole view
+		e.rate = 70.0f;
+		e.lifetime = 5.0f;
+		e.lifetimeJitter = 0.4f;
+		e.velocity = {0.3f, -1.2f, 0.15f};
+		e.spread = {0.4f, 0.3f, 0.4f};
+		e.positionJitter = 11.0f;
+		e.sizeStart = 0.07f;
+		e.sizeEnd = 0.03f;
+		e.colorStart = {1.0f, 0.25f, 0.12f, 0.9f};
+		e.colorEnd = {0.6f, 0.05f, 0.02f, 0.0f};
+		e.additive = true;
+		e.maxParticles = 700;
+	}
 	else if (name == "dust")
 	{
 		e.burst = 18;

@@ -28,8 +28,17 @@ struct MeshDraw
 	glm::vec4 tint;
 };
 
+struct GlassDraw
+{
+	glm::vec3 center;
+	float radius;
+	glm::vec3 tint;
+	float ior, roughness, absorption, dispersion;
+};
+
 struct FrameData
 {
+	std::vector<GlassDraw> glass; // drawn last, refracting everything before it
 	std::vector<MeshDraw> meshes;
 	std::vector<Instance> particlesAlpha;    // sorted back-to-front by the renderer
 	std::vector<Instance> particlesAdditive;
@@ -47,6 +56,17 @@ struct RenderSettings
 	bool dither = false;
 	// see-through window: block pixels between the camera and cutawayCenter, within
 	// cutawayRadius of the player on screen and above cutawayFloor, are discarded
+	// weather
+	float wetness = 0.0f;
+	bool fog = false;
+	glm::vec3 fogColor{0.5f, 0.55f, 0.6f};
+	float fogDensity = 0.8f;
+	float fogHeight = 0.8f;
+	float fogBase = 0.5f;
+	float fogDistance = 0.0f;
+	glm::vec3 fogFocus{0.0f};
+	float time = 0.0f;
+
 	bool cutaway = true;
 	float cutawayRadius = 0.9f;
 	glm::vec3 cutawayCenter{0.0f};
@@ -77,6 +97,12 @@ public:
 
 private:
 	void draw(const std::vector<Instance>& instances);
+	void draw(const Instance* instances, size_t count);
+	void grabFrame(bool pixelate);
+	void drawGlassSphere(const Camera& camera, const Level& level, const GlassDraw& g, int lightCount, bool pixelate,
+	                     const RenderSettings& settings);
+	void setWeather(Shader& shader, const RenderSettings& settings);
+	void buildSphere();
 	void drawMesh(Shader& shader, const MeshDraw& mesh, bool materials);
 	void setLighting(Shader& shader, const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount,
 	                 const RenderSettings& settings);
@@ -86,6 +112,11 @@ private:
 
 	Shader world, depth, unlit, mesh, meshDepth, post;
 	GLuint sceneFbo = 0, sceneColor = 0, sceneDepth = 0, emptyVao = 0;
+	Shader glass;
+	GLuint sphereVao = 0, sphereVbo = 0, sphereEbo = 0;
+	GLsizei sphereIndexCount = 0;
+	GLuint grabFbo = 0, grabTex = 0; // copy of the frame so far, sampled by the glass shader
+	int grabW = 0, grabH = 0;
 	int sceneW = 0, sceneH = 0;
 	GLuint cubeVao = 0, cubeVbo = 0, instanceVbo = 0;
 	GLuint lightUbo = 0;

@@ -16,6 +16,8 @@ public:
 
 	bool init(const std::string& soundDir);
 	void play(const std::string& name, float volume = 1.0f); // plays <soundDir>/<name>.wav
+	// looping ambience (e.g. rain); volume 0 stops it
+	void setLoop(const std::string& name, float volume);
 	void setVolume(float volume);
 	bool available() const;
 

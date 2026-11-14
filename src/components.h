@@ -1,0 +1,48 @@
+#ifndef COMPONENTS_H
+#define COMPONENTS_H
+
+// ECS components (EnTT). Entities are dynamic things in the world: the player,
+// characters and props spawned by scripts, particle emitters. The block grid itself
+// stays a Level, since a dense grid is cheaper as an array than as entities.
+
+#include <glm/glm.hpp>
+
+#include <memory>
+#include <string>
+#include <vector>
+
+class Model;
+
+struct Transform
+{
+	glm::vec3 position{0.0f}; // feet / pivot
+	float yaw = 0.0f;         // radians, around +y
+};
+
+struct MeshRenderer
+{
+	std::shared_ptr<Model> model;
+	float height = 1.0f;     // model is scaled to this many world units tall
+	float yawOffset = 0.0f;  // corrects the model's own forward axis
+	glm::vec4 tint{1.0f};
+};
+
+struct Animator
+{
+	int clip = 0;
+	float time = 0.0f;
+	float speed = 1.0f;
+	bool playing = true;
+	std::vector<glm::mat4> globals; // filled by the animation system
+	std::vector<glm::mat4> joints;
+};
+
+struct Name
+{
+	std::string value;
+};
+
+// created by Lua; removed when the script reloads
+struct ScriptOwned { };
+
+#endif

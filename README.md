@@ -1,13 +1,110 @@
 # IsoMateric
+
 ![IsoMateric](https://github.com/mm4rk3t/IsoMateric/assets/45017214/9361f7b5-3e3a-451e-a41b-9f03846457ec)
 
-When looking at the code take in consideration that this is my first project and I am a noob when it comes to programming.
+A small isometric engine in C++17 and OpenGL 3.3.
 
-It only builds on linux at the moment, and relative paths don't work, as you can see when trying to load shader files.
+- **World**: block height-map levels, an in-game editor, plain-text level files
+- **Rendering**: instanced blocks, directional shadows, up to 32 point lights, skinned glTF models,
+  particles, a pixelizer post-process, walls that fade when they hide the player
+- **Gameplay**: character controller with gravity, jumping and per-axis collision, A* click-to-move
+  that climbs one block at a time
+- **Engine**: ECS (EnTT), Lua 5.4 scripting, sound (miniaudio), skeletal animation (cgltf),
+  hot reload of shaders and scripts, a built-in CPU profiler and optional Tracy integration
 
-## Demo
-![CollisionPreview](https://github.com/mm4rk3t/IsoMateric/assets/45017214/2b0033ea-5bea-498e-9e29-44551febb0c0)
+## Build
 
-### TO-DO:
-- [x] ~~Figure out why nothing renders below a certain point in the window~~
-The frustrum's near parameter didn't include anything that was renderer before the 0.1 coordinate in the z-axis, so as a temporary fix, it was changed from 0.1 to -100 and now it does.
+Needs CMake 3.16+, a C++17 compiler and, on Linux, the X11/OpenGL development headers
+(`xorg-dev libgl1-mesa-dev` on Debian/Ubuntu). Every other library is in `external/`.
+
+```sh
+./compile_and_run.sh              # configure, build, run
+./compile_and_run.sh my.level     # run with another level
+ctest --test-dir build            # unit tests (level, physics, pathfinding, particles)
+cmake -B build -DISOMATERIC_TRACY=ON   # with the Tracy profiler client
+```
+
+In VS Code: F5 builds and runs under the debugger, Ctrl+Shift+B only builds.
+
+## Controls
+
+| Input | Play mode | Editor mode |
+|---|---|---|
+| WASD / arrows | move | move |
+| Space | jump | jump |
+| Left click | walk to the tile (A*) | raise the column |
+| Right click | | lower the column |
+| Middle drag | pan the camera | pan the camera |
+| Q / E | rotate the view | rotate the view |
+| Wheel, + / - | zoom | zoom |
+| T | follow the player on/off | |
+| Tab | switch to editor | switch to play |
+| F2 | debug window | debug window |
+| Esc | quit | quit |
+
+The debug window (F2) controls the camera style (true isometric or 2:1 dimetric), lighting, the
+pixelizer, point lights, entities, audio volume and the profiler, and saves/loads levels.
+
+## Pixelizer
+
+Renders the scene at `window / pixel size` and scales it up without filtering, so every scene
+pixel becomes a crisp block; the UI stays at full resolution. Options: colour levels per channel
+(posterize) with 4x4 Bayer dithering, and camera snapping to whole pixels so the image does not
+shimmer while the camera moves.
+
+## Scripting
+
+`assets/scripts/game.lua` runs on start and reloads when saved; entities a script spawned are
+removed on reload. It can define `on_start()`, `on_update(dt)` and
+`on_event(name, x, y, z)` (`"jump"`, `"land"`, `"respawn"`). The engine is the global `iso` table:
+
+| Function | |
+|---|---|
+| `iso.spawn_model(path, x, y, z [, height, yaw_offset])` | glTF model as an entity, scaled to `height`; returns the entity |
+| `iso.play_animation(e, clip [, speed])` | `speed` 0 pauses |
+| `iso.set_position(e, x, y, z)`, `iso.get_position(e)` | |
+| `iso.set_yaw(e, degrees)` | |
+| `iso.spawn_emitter(preset, x, y, z)` | continuous particles: `"fire"`, `"smoke"`, `"sparkle"` |
+| `iso.burst(preset, x, y, z)` | one-shot particles, e.g. `"dust"` |
+| `iso.destroy(e)`, `iso.player()` | |
+| `iso.play_sound(name [, volume])` | plays `assets/sounds/<name>.wav` |
+| `iso.height(x, z)` | column height |
+| `iso.light_count()`, `iso.get_light(i)`, `iso.set_light_intensity(i, v)` | 1-based |
+| `iso.time()`, `iso.log(...)` | |
+
+## Levels
+
+Plain text, see `assets/levels/default.level`:
+
+```
+size 16 16                      # columns along x and z
+spawn 12 3                      # player start tile
+sun -0.4 -1 -0.25  1 0.95 0.85  # direction, colour
+ambient 0.3
+light 5.5 2.5 8  1 0.55 0.25  1.2 6   # position, colour, intensity, radius (max 32)
+heights                         # one row per x; 0 = hole, 1 = floor, each extra = one block up
+1 1 1 ...
+```
+
+The player can climb one block by jumping; falling into a hole respawns them.
+
+## Layout
+
+```
+src/
+  level, player, pathfinding, particles   game logic without OpenGL (isomateric_core, unit-tested)
+  renderer, shader, texture, model        OpenGL, glTF loading and skinning
+  camera, input, audio, scripting         isometric camera, input actions, miniaudio, Lua
+  components                              ECS components
+  isomateric                              main loop, systems, editor, debug UI
+assets/   shaders, levels, models, sounds, scripts
+external/ vendored glfw, glad, glm, imgui, stb, entt, cgltf, miniaudio, lua, tracy
+tests/    unit tests
+```
+
+## Credits
+
+- `assets/models/CesiumMan.glb`: © 2017 Cesium, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
+  from the [Khronos glTF sample assets](https://github.com/KhronosGroup/glTF-Sample-Assets)
+- Sounds in `assets/sounds` are synthesized for this project
+- Libraries in `external/` keep their own licenses (MIT / zlib / BSD / public domain)

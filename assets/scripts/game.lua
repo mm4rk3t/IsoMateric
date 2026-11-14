@@ -1,29 +1,87 @@
 -- IsoMateric game script. Saved changes are hot-reloaded (entities spawned here are
 -- destroyed and on_start runs again). Engine API: the global table `iso`, see README.
 
-local npc
-local npc_angle = 0
-local npc_speed = 0.35
-local center_x, center_z = 7.5, 7.5
-local radius = 5.2
 local flames = {}
+
+local function box(x, y, z, sx, sy, sz, r, g, b, glow)
+	return iso.spawn_box(x, y, z, sx, sy, sz, r, g, b, glow)
+end
+
+-- dark stone, matching the 'S' pillar tiles; shade < 1 for mouldings
+local function stone(x, y, z, sx, sy, sz, shade)
+	local s = (shade or 1) * (0.96 + 0.08 * math.sin(x * 12.9 + y * 7.1))
+	box(x, y, z, sx, sy, sz, 0.44 * s, 0.42 * s, 0.42 * s)
+end
+
+-- A pointed (equilateral) gothic arch across the path. The pillars are level columns
+-- (x 29-30 and 35-36, z 31-32, 6 high), so they are solid; everything above the
+-- opening is decoration built here, so the player walks through underneath.
+local function build_arch()
+	local zc, depth = 31.5, 2.0
+	local left, right = 30.5, 34.5 -- inner faces of the pillars
+	local span = right - left
+	local spring = 4.0             -- where the pointed curve starts
+	local top = 8.0                -- top of the wall
+
+	-- wall over the pillars (the level columns end at y 5.5)
+	for _, px in ipairs({ 29.5, 35.5 }) do
+		stone(px, (5.5 + top) * 0.5, zc, 2.0, top - 5.5, depth)
+		stone(px, 0.7, zc, 2.3, 0.4, depth + 0.3, 0.8)    -- plinth
+		stone(px, spring, zc, 2.3, 0.25, depth + 0.3, 0.8) -- impost where the arch springs
+	end
+
+	-- the curve: each side is an arc of radius `span` centred on the opposite pillar
+	local function curve(x)
+		local c = x <= left + span * 0.5 and right or left
+		return spring + math.sqrt(span * span - (x - c) * (x - c))
+	end
+	local n = 24
+	local w = span / n
+	for i = 0, n - 1 do
+		local x = left + (i + 0.5) * w
+		local y = curve(x)
+		stone(x, (y + top) * 0.5, zc, w, top - y, depth) -- spandrel strip above the opening
+		-- archivolt: a darker, deeper band tracing the curve, thicker where it is steep
+		local dy = math.abs(curve(math.min(x + w, right - 0.001)) - y)
+		local band = math.max(0.22, dy + 0.08)
+		stone(x, y + band * 0.5 - 0.05, zc, w, band, depth + 0.24, 0.72)
+	end
+
+	-- cornice, pinnacles and a cross on the apex
+	stone(32.5, top + 0.12, zc, 8.6, 0.25, depth + 0.4, 0.8)
+	for _, px in ipairs({ 29.5, 35.5 }) do
+		local y = top + 0.25
+		for _, s in ipairs({ 1.0, 0.7, 0.45, 0.22, 0.1 }) do
+			stone(px, y + 0.35, zc, s, 0.7, s)
+			y = y + 0.7
+		end
+	end
+	stone(32.5, top + 0.85, zc, 0.16, 1.2, 0.16, 0.7)
+	stone(32.5, top + 1.05, zc, 0.65, 0.16, 0.16, 0.7)
+end
+
+-- iron sconce under a torch light
+local function sconce(x, y, z, wall_z)
+	local dir = z < wall_z and 1 or -1 -- towards the pillar face
+	box(x, y - 0.9, z + dir * 0.22, 0.1, 0.35, 0.1, 0.12, 0.11, 0.11)
+	box(x, y - 0.68, z + dir * 0.1, 0.1, 0.08, 0.3, 0.12, 0.11, 0.11)
+	box(x, y - 0.66, z, 0.26, 0.12, 0.26, 0.15, 0.13, 0.12)
+end
 
 function on_start()
 	iso.log("game.lua started")
 
-	-- a second character walking laps around the arena
-	npc = iso.spawn_model("models/CesiumMan.glb", center_x + radius, 0.5, center_z, 1.1)
-	iso.play_animation(npc, 0, 1.0)
+	build_arch()
 
-	-- fire above every point light, plus some sparkles over the central pillar
+	-- a torch at every point light: sconce, flame and a flickering light
 	for i = 1, iso.light_count() do
 		local x, y, z = iso.get_light(i)
 		flames[i] = { base = 1.2, phase = i * 1.7 }
+		sconce(x, y, z, 31.5)
 		iso.spawn_emitter("fire", x, y - 0.6, z)
 	end
-	iso.spawn_emitter("sparkle", 7.5, 3.2, 7.5)
 
-	-- glass test row along the right edge (x = 14), resting on the floor
+	-- glass test row beside the path (x = 40), resting on the grass
 	local r = 0.4
 	local row = {
 		{ label = "clear 1.5",        ior = 1.5 },
@@ -36,19 +94,11 @@ function on_start()
 	}
 	for i, opts in ipairs(row) do
 		opts.radius = r
-		iso.spawn_glass(14, 0.5 + r, 2 * i - 1, opts)
+		iso.spawn_glass(40, 0.5 + r, 18 + 2 * i, opts)
 	end
 end
 
 function on_update(dt)
-	-- walk the circle; the model faces along the tangent
-	npc_angle = npc_angle + dt * npc_speed
-	local x = center_x + math.cos(npc_angle) * radius
-	local z = center_z + math.sin(npc_angle) * radius
-	local ground = iso.height(math.floor(x + 0.5), math.floor(z + 0.5)) - 0.5
-	iso.set_position(npc, x, ground, z)
-	iso.set_yaw(npc, math.deg(math.atan(-math.sin(npc_angle), math.cos(npc_angle))))
-
 	-- flickering lights
 	local t = iso.time()
 	for i, f in ipairs(flames) do
@@ -65,11 +115,6 @@ function on_event(name, x, y, z)
 		iso.burst("dust", x, y + 0.05, z)
 	elseif name == "blood_moon_start" then
 		iso.log("the blood moon rises...")
-		iso.set_tint(npc, 1.0, 0.35, 0.3)
-		npc_speed = 0.9 -- it walks faster under the blood moon
-	elseif name == "blood_moon_end" then
-		iso.set_tint(npc, 1, 1, 1)
-		npc_speed = 0.35
 	elseif name == "respawn" then
 		iso.play_sound("chime")
 		iso.burst("sparkle", x, y + 0.5, z)

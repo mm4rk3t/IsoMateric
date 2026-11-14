@@ -2,12 +2,16 @@
 
 ![IsoMateric](https://github.com/mm4rk3t/IsoMateric/assets/45017214/9361f7b5-3e3a-451e-a41b-9f03846457ec)
 
+![Blood moon over the gothic arch: rain, lightning, god rays and torches](docs/blood-moon-arch.png)
+
 A small isometric engine in C++17 and OpenGL 3.3.
 
 - **World**: block height-map levels, an in-game editor, plain-text level files
 - **Rendering**: instanced blocks, directional shadows, up to 32 point lights, skinned glTF models,
   particles, refractive glass, a pixelizer post-process, a see-through window in walls that hide
   the player
+- **Atmosphere**: day/night cycle with blood moons, sky backdrops (atmosphere, galaxy, overcast),
+  rain and lightning, wind-driven grass, fog, god rays, flickering torches, bloom, colour grading
 - **Gameplay**: character controller with gravity, jumping and per-axis collision, A* click-to-move
   that climbs one block at a time
 - **Engine**: ECS (EnTT), Lua 5.4 scripting, sound (miniaudio), skeletal animation (cgltf),

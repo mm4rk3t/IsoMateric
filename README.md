@@ -109,6 +109,7 @@ removed on reload. It can define `on_start()`, `on_update(dt)` and
 | `iso.set_tint(e, r, g, b)` | multiply a model's colours |
 | `iso.spawn_emitter(preset, x, y, z)` | continuous particles: `"fire"`, `"smoke"`, `"sparkle"` |
 | `iso.burst(preset, x, y, z)` | one-shot particles, e.g. `"dust"` |
+| `iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow])` | decorative box (props, roofs, signs); no collision, glowing boxes are unlit |
 | `iso.spawn_glass(x, y, z [, opts])` | glass sphere; `opts`: `radius`, `ior`, `roughness`, `absorption`, `dispersion`, `tint = {r, g, b}`, `label` |
 | `iso.destroy(e)`, `iso.player()` | |
 | `iso.play_sound(name [, volume])` | plays `assets/sounds/<name>.wav` |
@@ -130,13 +131,17 @@ sky galaxy                      # plain | atmosphere | galaxy
 script scripts/game.lua         # the level's Lua script
 asteroids 40                    # block asteroids orbiting the level
 trunk 10 10                     # an endless tree trunk through that column
+tiles                           # optional: one row of materials per x
+..ssgg...                       # . default, s stone, S dark stone, g grass, w wood, d dirt, r rock, b plaster
 heights                         # one row per x; 0 = hole, 1 = floor, each extra = one block up
 1 1 1 ...
 ```
 
 The player can climb one block by jumping; falling into a hole respawns them.
-`assets/levels/sky_island.level` is a floating town square in space with a galaxy sky, asteroids
-and an endless tree through the middle.
+`assets/levels/sky_island.level` is a floating town square in space: a paved square around an
+endless tree, a house, wooden bridges (start at the end of one), lamps, signs, benches, an NPC to
+talk to and a rocky underside, under a galaxy sky with asteroids. Its props are built in
+`assets/scripts/sky_island.lua` with `iso.spawn_box`.
 
 ## Layout
 

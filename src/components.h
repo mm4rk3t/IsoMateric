@@ -45,6 +45,15 @@ struct Name
 // created by Lua; removed when the script reloads
 struct ScriptOwned { };
 
+// A decorative box centred on Transform::position (no collision). Glowing boxes are
+// drawn unlit, e.g. windows and lamp heads.
+struct Box
+{
+	glm::vec3 size{1.0f};
+	glm::vec4 color{1.0f};
+	bool glow = false;
+};
+
 // A refractive glass sphere centred on Transform::position.
 struct Glass
 {

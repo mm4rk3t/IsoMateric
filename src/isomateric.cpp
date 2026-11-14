@@ -68,8 +68,30 @@ namespace
 		return true;
 	}
 
-	glm::vec3 blockColor(int x, int y, int z)
+	float tileNoise(int x, int z)
 	{
+		unsigned h = static_cast<unsigned>(x) * 73856093u ^ static_cast<unsigned>(z) * 19349663u;
+		h = (h ^ (h >> 13)) * 1274126177u;
+		return static_cast<float>((h ^ (h >> 16)) & 0xff) / 255.0f;
+	}
+
+	// colour of the floor block (y == 0) or of the stack above it, from the column material
+	glm::vec3 blockColor(const Level& level, int x, int y, int z)
+	{
+		const float n = tileNoise(x, z);
+		const bool stack = y > 0;
+		switch (level.tile(x, z))
+		{
+			case 's': return glm::vec3(0.63f, 0.61f, 0.58f) * (0.93f + 0.1f * n) * (stack ? 0.92f : 1.0f);
+			case 'S': return glm::vec3(0.44f, 0.42f, 0.42f) * (0.93f + 0.1f * n);
+			case 'g': return stack ? glm::vec3(0.27f, 0.45f, 0.25f) * (0.9f + 0.15f * n)
+			                       : glm::vec3(0.34f, 0.54f, 0.29f) * (0.88f + 0.18f * n);
+			case 'w': return glm::vec3(0.55f, 0.37f, 0.21f) * (((x + z) & 1) ? 0.92f : 1.0f) * (0.95f + 0.08f * n);
+			case 'd': return glm::vec3(0.50f, 0.37f, 0.26f) * (0.9f + 0.15f * n);
+			case 'r': return glm::vec3(0.40f, 0.38f, 0.36f) * (0.85f + 0.2f * n);
+			case 'b': return glm::vec3(0.82f, 0.72f, 0.58f) * (0.96f + 0.06f * n);
+			default: break;
+		}
 		if (y == 0)
 			return ((x + z) & 1) ? glm::vec3(0.47f, 0.52f, 0.42f) : glm::vec3(0.51f, 0.57f, 0.45f);
 		float s = 0.70f + 0.05f * static_cast<float>(y);
@@ -501,10 +523,10 @@ void IsoMateric::buildFrame(FrameData& frame)
 			const int h = level.height(x, z);
 			const float fx = static_cast<float>(x), fz = static_cast<float>(z);
 			if (h >= 1)
-				frame.opaque.push_back({glm::vec3(fx, 0.0f, fz), glm::vec3(1.0f), glm::vec4(blockColor(x, 0, z), 1.0f)});
+				frame.opaque.push_back({glm::vec3(fx, 0.0f, fz), glm::vec3(1.0f), glm::vec4(blockColor(level, x, 0, z), 1.0f)});
 			if (h >= 2)
 				frame.opaque.push_back({glm::vec3(fx, static_cast<float>(h) * 0.5f, fz), glm::vec3(1.0f, static_cast<float>(h - 1), 1.0f),
-				                        glm::vec4(blockColor(x, h - 1, z), 1.0f)});
+				                        glm::vec4(blockColor(level, x, h - 1, z), 1.0f)});
 		}
 	}
 
@@ -582,6 +604,10 @@ void IsoMateric::buildFrame(FrameData& frame)
 		for (const auto& [offset, size] : a.parts)
 			frame.opaque.push_back({c + offset, glm::vec3(size), glm::vec4(a.color, 1.0f)});
 	}
+
+	// decorative boxes from scripts (props, roofs, signs); glowing ones are unlit
+	for (auto [entity, t, box] : registry.view<Transform, Box>().each())
+		(box.glow ? frame.overlay : frame.opaque).push_back({t.position, box.size, box.color});
 
 	// glass
 	for (auto [entity, t, g] : registry.view<Transform, Glass>().each())
@@ -1092,8 +1118,14 @@ void IsoMateric::drawUi(float frameTime)
 	{
 		ImGui::Text("%d alive", static_cast<int>(registry.storage<entt::entity>().free_list()));
 		entt::entity toDestroy = entt::null;
+		int boxes = 0;
 		for (auto [entity, t] : registry.view<Transform>().each())
 		{
+			if (registry.all_of<Box>(entity))
+			{
+				boxes++; // scenery from scripts; too many to list one by one
+				continue;
+			}
 			const auto* name = registry.try_get<Name>(entity);
 			const auto* emitter = registry.try_get<ParticleEmitter>(entity);
 			ImGui::PushID(static_cast<int>(entt::to_integral(entity)));
@@ -1118,6 +1150,7 @@ void IsoMateric::drawUi(float frameTime)
 			}
 			ImGui::PopID();
 		}
+		ImGui::TextDisabled("+ %d decorative boxes", boxes);
 		if (toDestroy != entt::null)
 			registry.destroy(toDestroy);
 	}

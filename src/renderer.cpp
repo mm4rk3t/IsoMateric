@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <random>
 #include <string>
 
 namespace
@@ -20,6 +21,16 @@ namespace
 		glm::vec4 positionRadius[Level::kMaxLights];
 		glm::vec4 colorIntensity[Level::kMaxLights];
 	};
+
+	// one grass blade, as stored in the instance buffer (matches grass.vs)
+	struct GrassBlade
+	{
+		glm::vec3 base;
+		glm::vec4 shape; // height, half width, facing angle, phase
+		glm::vec3 color;
+	};
+	constexpr int kBladeSegments = 4;
+	constexpr GLsizei kBladeVertices = kBladeSegments * 2 + 1; // triangle strip ending in the tip
 
 	// Unit cube, 36 vertices (position + normal), counter-clockwise when seen from outside,
 	// so back-face culling works. Each face is built from its normal n and two tangents
@@ -70,6 +81,9 @@ Renderer::~Renderer()
 	glDeleteBuffers(1, &sphereEbo);
 	glDeleteFramebuffers(1, &grabFbo);
 	glDeleteTextures(1, &grabTex);
+	glDeleteVertexArrays(1, &grassVao);
+	glDeleteBuffers(1, &grassMeshVbo);
+	glDeleteBuffers(1, &grassInstanceVbo);
 	glDeleteFramebuffers(2, bloomFbo);
 	glDeleteTextures(2, bloomTex);
 }
@@ -347,6 +361,7 @@ bool Renderer::init()
 	bloomExtract = Shader(kShaderDir + "post.vs", kShaderDir + "bloom_extract.fs");
 	bloomBlur = Shader(kShaderDir + "post.vs", kShaderDir + "bloom_blur.fs");
 	bloomComposite = Shader(kShaderDir + "post.vs", kShaderDir + "bloom_composite.fs");
+	grass = Shader(kShaderDir + "grass.vs", kShaderDir + "world.fs");
 	buildSphere();
 	glGenVertexArrays(1, &emptyVao);
 	if (!reloadShaders())
@@ -377,6 +392,36 @@ bool Renderer::init()
 	glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Instance), reinterpret_cast<void*>(offsetof(Instance, color)));
 	glVertexAttribDivisor(4, 1);
 	glBindVertexArray(0);
+
+	// grass: one blade strip, instanced per blade
+	{
+		std::vector<float> strip;
+		for (int i = 0; i < kBladeSegments; i++)
+		{
+			float t = static_cast<float>(i) / kBladeSegments;
+			strip.insert(strip.end(), {-1.0f, t, 1.0f, t});
+		}
+		strip.insert(strip.end(), {0.0f, 1.0f});
+		glGenVertexArrays(1, &grassVao);
+		glGenBuffers(1, &grassMeshVbo);
+		glGenBuffers(1, &grassInstanceVbo);
+		glBindVertexArray(grassVao);
+		glBindBuffer(GL_ARRAY_BUFFER, grassMeshVbo);
+		glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(strip.size() * sizeof(float)), strip.data(), GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+		glBindBuffer(GL_ARRAY_BUFFER, grassInstanceVbo);
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(GrassBlade), reinterpret_cast<void*>(offsetof(GrassBlade, base)));
+		glVertexAttribDivisor(2, 1);
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(GrassBlade), reinterpret_cast<void*>(offsetof(GrassBlade, shape)));
+		glVertexAttribDivisor(3, 1);
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(GrassBlade), reinterpret_cast<void*>(offsetof(GrassBlade, color)));
+		glVertexAttribDivisor(4, 1);
+		glBindVertexArray(0);
+	}
 
 	// point lights uniform buffer
 	glGenBuffers(1, &lightUbo);
@@ -414,12 +459,13 @@ bool Renderer::init()
 bool Renderer::reloadShaders()
 {
 	bool ok = world.load() & depth.load() & unlit.load() & mesh.load() & meshDepth.load() & post.load() & glass.load() & sky.load() & bloomExtract.load() & bloomBlur.load() &
-	          bloomComposite.load();
+	          bloomComposite.load() & grass.load();
 	glass.bindBlock("Lights", 0);
+	grass.bindBlock("Lights", 0);
 	world.bindBlock("Lights", 0);
 	mesh.bindBlock("Lights", 0);
 	return ok && world.valid() && depth.valid() && unlit.valid() && mesh.valid() && meshDepth.valid() && post.valid() && glass.valid() && sky.valid() &&
-	       bloomExtract.valid() && bloomBlur.valid() && bloomComposite.valid();
+	       bloomExtract.valid() && bloomBlur.valid() && bloomComposite.valid() && grass.valid();
 }
 
 void Renderer::reloadShadersIfChanged()
@@ -434,6 +480,8 @@ void Renderer::reloadShadersIfChanged()
 	post.reloadIfChanged();
 	if (glass.reloadIfChanged())
 		glass.bindBlock("Lights", 0);
+	if (grass.reloadIfChanged())
+		grass.bindBlock("Lights", 0);
 	sky.reloadIfChanged();
 	bloomExtract.reloadIfChanged();
 	bloomBlur.reloadIfChanged();
@@ -516,6 +564,85 @@ void Renderer::setViewRect(int x, int w)
 {
 	viewX = std::clamp(x, 0, width - 1);
 	viewW = std::clamp(w, 1, width - viewX);
+}
+
+void Renderer::rebuildGrass(const Level& level, const RenderSettings& settings)
+{
+	// rebuild only when the grass tiles, their heights or the settings changed (editor)
+	unsigned long long key = 1469598103934665603ull;
+	auto mix = [&](unsigned long long v) { key = (key ^ v) * 1099511628211ull; };
+	mix(static_cast<unsigned long long>(level.sizeX));
+	mix(static_cast<unsigned long long>(level.sizeZ));
+	mix(static_cast<unsigned long long>(settings.grassDensity));
+	mix(static_cast<unsigned long long>(settings.grassHeight * 1000.0f));
+	for (size_t i = 0; i < level.tiles.size(); i++)
+		mix(level.tiles[i] == 'g' ? static_cast<unsigned long long>(level.heights[i]) + 1 : 0);
+	for (const glm::ivec2& t : level.trunks)
+		mix(static_cast<unsigned long long>(t.x * 7919 + t.y));
+	if (key == grassKey)
+		return;
+	grassKey = key;
+
+	std::vector<GrassBlade> blades;
+	std::uniform_real_distribution<float> u(0.0f, 1.0f);
+	const glm::vec3 dark(0.15f, 0.30f, 0.12f), light(0.40f, 0.60f, 0.26f), dry(0.55f, 0.55f, 0.28f);
+	for (int x = 0; x < level.sizeX; x++)
+	{
+		for (int z = 0; z < level.sizeZ; z++)
+		{
+			if (level.tile(x, z) != 'g' || !level.standable(x, z))
+				continue;
+			std::mt19937 rng(static_cast<unsigned>(x * 73856093) ^ static_cast<unsigned>(z * 19349663)); // stable per tile
+			const float top = level.surface(x, z);
+			for (int i = 0; i < settings.grassDensity; i++)
+			{
+				GrassBlade b;
+				b.base = glm::vec3(static_cast<float>(x) + (u(rng) - 0.5f) * 0.96f, top, static_cast<float>(z) + (u(rng) - 0.5f) * 0.96f);
+				float tall = u(rng);
+				b.shape = glm::vec4((0.16f + 0.26f * tall * tall) * settings.grassHeight, 0.035f + 0.03f * u(rng), u(rng) * glm::two_pi<float>(),
+				                    u(rng) * glm::two_pi<float>());
+				glm::vec3 c = glm::mix(dark, light, u(rng));
+				if (u(rng) < 0.08f)
+					c = glm::mix(c, dry, 0.7f); // the odd dry blade
+				b.color = c;
+				blades.push_back(b);
+			}
+		}
+	}
+	grassBlades = static_cast<GLsizei>(blades.size());
+	glBindBuffer(GL_ARRAY_BUFFER, grassInstanceVbo);
+	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(blades.size() * sizeof(GrassBlade)), blades.data(), GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void Renderer::drawGrass(const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount, const RenderSettings& settings)
+{
+	rebuildGrass(level, settings);
+	if (grassBlades == 0)
+		return;
+	grass.use();
+	setLighting(grass, camera, level, lightSpace, lightCount, settings);
+	grass.set("wind", settings.wind);
+	grass.set("windMax", 8.0f);
+	grass.set("pusher", settings.grassPusher);
+	grass.set("pushRadius", 0.55f);
+	grass.set("cutaway", settings.cutaway && !camera.isPerspective() ? 1 : 0);
+	grass.set("cutawayCenter", settings.cutawayCenter);
+	grass.set("cutawayRadius", settings.cutawayRadius);
+	grass.set("cutawayFloor", settings.cutawayFloor);
+	grass.set("cutawayDir", settings.cutawayDir);
+	// blades are flat: both sides visible; they stay out of the outline normals, or
+	// every blade would get an ink line
+	glDisable(GL_CULL_FACE);
+	glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glBindVertexArray(grassVao);
+	glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, kBladeVertices, grassBlades);
+	glBindVertexArray(0);
+	glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glEnable(GL_CULL_FACE);
+	drawCalls++;
+	instancesDrawn += grassBlades;
+	world.use(); // callers continue with the world shader bound
 }
 
 void Renderer::draw(const std::vector<Instance>& instances)
@@ -639,6 +766,10 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	world.set("cutawayFloor", settings.cutawayFloor);
 	world.set("cutawayDir", settings.cutawayDir);
 	draw(frame.opaque);
+
+	// 3a. grass, swaying in the wind
+	if (settings.grass)
+		drawGrass(camera, level, lightSpace, lightCount, settings);
 
 	// 3b. skinned / static meshes
 	if (!frame.meshes.empty())

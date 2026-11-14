@@ -81,7 +81,14 @@ struct RenderSettings
 	float outlineWidth = 1.0f;
 
 	// weather
+	glm::vec3 wind{0.0f};   // (x, 0, z) units per second; shared by rain and grass
 	float wetness = 0.0f;
+
+	// grass: blades on 'g' tiles, swayed by the wind and parted by the player
+	bool grass = true;
+	int grassDensity = 24;  // blades per tile
+	float grassHeight = 1.0f;
+	glm::vec3 grassPusher{0.0f, -1000.0f, 0.0f};
 	bool fog = false;
 	glm::vec3 fogColor{0.5f, 0.55f, 0.6f};
 	float fogDensity = 0.8f;
@@ -130,6 +137,8 @@ private:
 	void drawSky(const Camera& camera, const RenderSettings& settings, bool pixelate);
 	void applyBloom(const RenderSettings& settings, bool pixelate);
 	void buildSphere();
+	void drawGrass(const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount, const RenderSettings& settings);
+	void rebuildGrass(const Level& level, const RenderSettings& settings);
 	void drawMesh(Shader& shader, const MeshDraw& mesh, bool materials);
 	void setLighting(Shader& shader, const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount,
 	                 const RenderSettings& settings);
@@ -139,6 +148,10 @@ private:
 
 	Shader world, depth, unlit, mesh, meshDepth, post;
 	GLuint sceneFbo = 0, sceneColor = 0, sceneDepth = 0, sceneNormal = 0, emptyVao = 0;
+	Shader grass;
+	GLuint grassVao = 0, grassMeshVbo = 0, grassInstanceVbo = 0;
+	GLsizei grassBlades = 0;
+	unsigned long long grassKey = 0; // hash of what the blades were built from
 	Shader glass, sky, bloomExtract, bloomBlur, bloomComposite;
 	GLuint bloomFbo[2] = {0, 0}, bloomTex[2] = {0, 0};
 	int bloomW = 0, bloomH = 0;

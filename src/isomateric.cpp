@@ -801,6 +801,8 @@ void IsoMateric::updateWeather(float dt)
 	audio.setLoop("rain", target * 0.8f);
 
 	renderSettings.time = elapsed;
+	renderSettings.wind = glm::vec3(weather.wind.x, 0.0f, weather.wind.y);
+	renderSettings.grassPusher = player().feet();
 	renderSettings.fogFocus = camera.focus;
 	if (weather.fogFollowsSky)
 		renderSettings.fogColor = glm::min(renderSettings.clearColor * 1.25f + glm::vec3(0.04f), glm::vec3(1.0f));
@@ -1074,11 +1076,18 @@ void IsoMateric::drawUi(float frameTime)
 
 	if (ImGui::CollapsingHeader("Weather", ImGuiTreeNodeFlags_DefaultOpen))
 	{
+		ImGui::DragFloat2("Wind", &weather.wind.x, 0.05f, -8.0f, 8.0f);
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Calm"))
+			weather.wind = glm::vec2(0.0f);
 		ImGui::Checkbox("Rain", &weather.raining);
 		if (weather.raining)
-		{
 			ImGui::SliderFloat("Intensity", &weather.rainIntensity, 0.05f, 1.0f);
-			ImGui::DragFloat2("Wind", &weather.wind.x, 0.05f, -8.0f, 8.0f);
+		ImGui::Checkbox("Grass", &renderSettings.grass);
+		if (renderSettings.grass)
+		{
+			ImGui::SliderInt("Blades per tile", &renderSettings.grassDensity, 4, 96);
+			ImGui::SliderFloat("Blade height", &renderSettings.grassHeight, 0.3f, 2.5f, "%.1fx");
 		}
 		ImGui::Text("Wetness %.2f  |  %d drops", renderSettings.wetness, static_cast<int>(rain.drops.size()));
 		ImGui::Checkbox("Fog / mist", &renderSettings.fog);

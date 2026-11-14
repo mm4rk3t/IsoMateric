@@ -1,8 +1,8 @@
 # IsoMateric level
 size 16 16
 spawn 12 3
-sun -0.4 -1 -0.25  1 0.95 0.85
-ambient 0.3
+sun -0.43 -0.33 -0.38  0.992 0.239 0.251
+ambient 0.058
 light 5.5 2.5 8  1 0.55 0.25  1.2 6
 light 10 2.5 10  0.3 0.6 1  1.2 6
 heights

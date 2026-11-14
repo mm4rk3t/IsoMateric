@@ -42,7 +42,7 @@ In VS Code: F5 builds and runs under the debugger, Ctrl+Shift+B only builds.
 | F2 | debug window | debug window |
 | Esc | quit | quit |
 
-The debug window (F2) controls the camera style (true isometric or 2:1 dimetric), lighting, the
+The debug sidebar on the left (F2 toggles it, drag its right edge to resize) controls the camera style (true isometric or 2:1 dimetric), lighting, the
 pixelizer, point lights, entities, audio volume and the profiler, and saves/loads levels.
 
 ## Pixelizer

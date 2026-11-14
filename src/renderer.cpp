@@ -227,12 +227,20 @@ void Renderer::setLighting(Shader& shader, const Camera& camera, const Level& le
 	shader.set("numLights", lightCount);
 	shader.set("shadowsEnabled", settings.shadows ? 1 : 0);
 	shader.set("shadowMap", 0);
+	shader.set("shadowNormalOffset", shadowTexelWorld * 1.5f);
 }
 
 void Renderer::resize(int w, int h)
 {
 	width = std::max(1, w);
 	height = std::max(1, h);
+	setViewRect(viewX, viewW);
+}
+
+void Renderer::setViewRect(int x, int w)
+{
+	viewX = std::clamp(x, 0, width - 1);
+	viewW = std::clamp(w, 1, width - viewX);
 }
 
 void Renderer::draw(const std::vector<Instance>& instances)
@@ -249,10 +257,11 @@ void Renderer::draw(const std::vector<Instance>& instances)
 	instancesDrawn += static_cast<int>(instances.size());
 }
 
-glm::mat4 Renderer::sunMatrix(const Level& level, const FrameData& frame) const
+glm::mat4 Renderer::sunMatrix(const Level& level, const FrameData& frame)
 {
 	glm::vec3 center = (frame.boundsMin + frame.boundsMax) * 0.5f;
 	float radius = glm::length(frame.boundsMax - frame.boundsMin) * 0.5f + 1.0f;
+	shadowTexelWorld = 2.0f * radius / static_cast<float>(kShadowSize);
 	glm::vec3 dir = glm::normalize(level.sunDirection);
 	glm::vec3 up = std::abs(dir.y) > 0.99f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
 	glm::mat4 view = glm::lookAt(center - dir * radius * 2.0f, center, up);
@@ -280,12 +289,12 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 		glBindFramebuffer(GL_FRAMEBUFFER, shadowFbo);
 		glViewport(0, 0, kShadowSize, kShadowSize);
 		glClear(GL_DEPTH_BUFFER_BIT);
-		glCullFace(GL_FRONT); // back faces into the map: removes most shadow acne on closed boxes
+		// front faces into the map; acne is handled by the normal offset in the shaders
+		// (culling front faces instead leaks light under walls where they meet the floor)
 		depth.use();
 		depth.set("lightSpace", lightSpace);
 		draw(frame.opaque);
 		draw(frame.transparent);
-		glCullFace(GL_BACK);
 		if (!frame.meshes.empty())
 		{
 			glDisable(GL_CULL_FACE); // character meshes are not always closed
@@ -302,13 +311,13 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	const bool pixelate = settings.pixelSize > 1;
 	if (pixelate)
 	{
-		ensureSceneTarget(std::max(1, width / settings.pixelSize), std::max(1, height / settings.pixelSize));
+		ensureSceneTarget(std::max(1, viewW / settings.pixelSize), std::max(1, height / settings.pixelSize));
 		glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
 		glViewport(0, 0, sceneW, sceneH);
 	}
 	else
 	{
-		glViewport(0, 0, width, height);
+		glViewport(viewX, 0, viewW, height);
 	}
 	glClearColor(settings.clearColor.r, settings.clearColor.g, settings.clearColor.b, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -331,6 +340,10 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	glBindTexture(GL_TEXTURE_2D, shadowTex);
 	world.use();
 	setLighting(world, camera, level, lightSpace, lightCount, settings);
+	world.set("cutaway", settings.cutaway ? 1 : 0);
+	world.set("cutawayCenter", settings.cutawayCenter);
+	world.set("cutawayRadius", settings.cutawayRadius);
+	world.set("cutawayFloor", settings.cutawayFloor);
 	draw(frame.opaque);
 
 	// 3b. skinned / static meshes
@@ -397,7 +410,7 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	if (pixelate)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, width, height);
+		glViewport(viewX, 0, viewW, height);
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_CULL_FACE);
 		post.use();

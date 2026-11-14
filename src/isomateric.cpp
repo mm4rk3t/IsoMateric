@@ -136,7 +136,22 @@ void IsoMateric::createPlayer()
 void IsoMateric::onFramebufferResize(int width, int height)
 {
 	renderer.resize(width, height);
-	camera.setViewport(width, height);
+	updateLayout();
+}
+
+void IsoMateric::updateLayout()
+{
+	int fbW, fbH;
+	glfwGetFramebufferSize(window, &fbW, &fbH);
+	glfwGetWindowSize(window, &windowW, &windowH);
+	float scale = windowW > 0 ? static_cast<float>(fbW) / static_cast<float>(windowW) : 1.0f;
+
+	// the scene gets whatever the sidebar leaves (at least 100 px)
+	viewX = showDebug ? std::min(sidebarWidth, static_cast<float>(windowW) - 100.0f) : 0.0f;
+	viewX = std::max(viewX, 0.0f);
+	int sidePx = static_cast<int>(std::lround(viewX * scale));
+	renderer.setViewRect(sidePx, fbW - sidePx);
+	camera.setViewport(fbW - sidePx, fbH);
 }
 
 void IsoMateric::loadLevel(const std::string& path)
@@ -241,6 +256,7 @@ void IsoMateric::run()
 			if (showDebug)
 				drawUi(dt);
 			ImGui::Render();
+			updateLayout(); // sidebar may have been resized or toggled
 		}
 
 		FrameData frame;
@@ -381,10 +397,11 @@ void IsoMateric::updateAnimation(float dt)
 void IsoMateric::updateHover()
 {
 	hover.valid = false;
-	if (inputState.mouseBlocked || windowW <= 0 || windowH <= 0)
+	const float viewW = static_cast<float>(windowW) - viewX;
+	if (inputState.mouseBlocked || viewW <= 0.0f || windowH <= 0 || inputState.mouseX < viewX)
 		return;
 
-	Ray ray = camera.screenRay(static_cast<float>(inputState.mouseX) / static_cast<float>(windowW),
+	Ray ray = camera.screenRay((static_cast<float>(inputState.mouseX) - viewX) / viewW,
 	                           static_cast<float>(inputState.mouseY) / static_cast<float>(windowH));
 	float best = std::numeric_limits<float>::infinity();
 	for (int x = 0; x < level.sizeX; x++)
@@ -408,20 +425,12 @@ void IsoMateric::updateHover()
 	}
 }
 
-bool IsoMateric::occludesPlayer(const glm::vec3& blockCenter) const
-{
-	glm::vec3 toCam = camera.toCamera();
-	if (blockCenter.y < player().feet().y)
-		return false; // never fade what the player stands on
-	glm::vec3 v = blockCenter - player().position;
-	float along = glm::dot(v, toCam);
-	if (along <= 0.3f)
-		return false; // behind the player
-	return glm::length(v - along * toCam) < 0.9f;
-}
-
 void IsoMateric::buildFrame(FrameData& frame)
 {
+	// see-through window around the player, cut in the world shader
+	renderSettings.cutawayCenter = player().position;
+	renderSettings.cutawayFloor = player().feet().y + 0.05f;
+
 	const int maxH = std::max(level.maxHeight(), 2);
 	frame.boundsMin = glm::vec3(-0.5f);
 	frame.boundsMax = glm::vec3(static_cast<float>(level.sizeX) - 0.5f, static_cast<float>(maxH) - 0.5f,
@@ -431,15 +440,15 @@ void IsoMateric::buildFrame(FrameData& frame)
 	{
 		for (int z = 0; z < level.sizeZ; z++)
 		{
-			for (int y = 0; y < level.height(x, z); y++)
-			{
-				glm::vec3 c(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
-				glm::vec3 color = blockColor(x, y, z);
-				if (cutaway && y >= 1 && occludesPlayer(c))
-					frame.transparent.push_back({c, glm::vec3(1.0f), glm::vec4(color, 0.25f)});
-				else
-					frame.opaque.push_back({c, glm::vec3(1.0f), glm::vec4(color, 1.0f)});
-			}
+			// floor block plus one tall box for everything stacked on it: no hidden faces
+			// between stacked cubes, which would otherwise flicker through shared edges
+			const int h = level.height(x, z);
+			const float fx = static_cast<float>(x), fz = static_cast<float>(z);
+			if (h >= 1)
+				frame.opaque.push_back({glm::vec3(fx, 0.0f, fz), glm::vec3(1.0f), glm::vec4(blockColor(x, 0, z), 1.0f)});
+			if (h >= 2)
+				frame.opaque.push_back({glm::vec3(fx, static_cast<float>(h) * 0.5f, fz), glm::vec3(1.0f, static_cast<float>(h - 1), 1.0f),
+				                        glm::vec4(blockColor(x, h - 1, z), 1.0f)});
 		}
 	}
 
@@ -515,9 +524,16 @@ void IsoMateric::drawUi(float frameTime)
 {
 	fpsSmoothed = fpsSmoothed * 0.95f + (frameTime > 0.0f ? 1.0f / frameTime : 0.0f) * 0.05f;
 
-	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(340, 560), ImGuiCond_FirstUseEver);
-	ImGui::Begin("IsoMateric (F2)");
+	// sidebar docked to the left edge: full height, width dragged from its right edge
+	const ImVec2 display = ImGui::GetIO().DisplaySize;
+	const float maxWidth = std::max(240.0f, std::min(700.0f, display.x - 100.0f));
+	ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(sidebarWidth, display.y), ImGuiCond_Always);
+	ImGui::SetNextWindowSizeConstraints(ImVec2(240.0f, display.y), ImVec2(maxWidth, display.y));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+	ImGui::Begin("IsoMateric (F2)", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+	ImGui::PopStyleVar();
+	sidebarWidth = ImGui::GetWindowWidth();
 
 	ImGui::Text("%.0f fps | %d draw calls | %d instances", fpsSmoothed, renderer.drawCalls, renderer.instancesDrawn);
 
@@ -563,7 +579,9 @@ void IsoMateric::drawUi(float frameTime)
 	{
 		ImGui::Checkbox("Shadows", &renderSettings.shadows);
 		ImGui::SameLine();
-		ImGui::Checkbox("Fade walls in front of player", &cutaway);
+		ImGui::Checkbox("See-through walls", &renderSettings.cutaway);
+		if (renderSettings.cutaway)
+			ImGui::SliderFloat("Window radius", &renderSettings.cutawayRadius, 0.5f, 4.0f, "%.1f blocks");
 		ImGui::DragFloat3("Sun direction", &level.sunDirection.x, 0.01f, -1.0f, 1.0f);
 		ImGui::ColorEdit3("Sun color", &level.sunColor.x);
 		ImGui::SliderFloat("Ambient", &level.ambient, 0.0f, 1.0f);

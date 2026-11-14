@@ -9,6 +9,7 @@ layout (location = 4) in vec4 iColor;
 uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 lightSpace;
+uniform float shadowNormalOffset; // world units; pushes the shadow lookup off the surface
 
 out vec3 vWorldPos;
 out vec3 vNormal;
@@ -22,6 +23,6 @@ void main()
 	vWorldPos = world;
 	vNormal = aNormal;
 	vColor = iColor;
-	vLightSpacePos = lightSpace * vec4(world, 1.0);
+	vLightSpacePos = lightSpace * vec4(world + aNormal * shadowNormalOffset, 1.0);
 	gl_Position = projection * view * vec4(world, 1.0);
 }

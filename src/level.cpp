@@ -11,6 +11,10 @@
 //   spawn <x> <z>
 //   sun <dirX> <dirY> <dirZ> <r> <g> <b>
 //   ambient <value>
+//   sky plain|atmosphere|galaxy
+//   script <path relative to assets/>
+//   asteroids <count>
+//   trunk <x> <z>           an endless tree trunk through that column (any number)
 //   light <x> <y> <z> <r> <g> <b> <intensity> <radius>   (any number of lines)
 //   heights
 //   <sizeZ numbers>   one row per x, sizeX rows
@@ -100,6 +104,28 @@ bool Level::load(const std::string& path)
 			if (!(in >> d.x >> d.y >> d.z >> c.r >> c.g >> c.b))
 				return fail("bad sun");
 		}
+		else if (key == "sky")
+		{
+			if (!(in >> result.sky) || (result.sky != "plain" && result.sky != "atmosphere" && result.sky != "galaxy"))
+				return fail("sky must be plain, atmosphere or galaxy");
+		}
+		else if (key == "script")
+		{
+			if (!(in >> result.script))
+				return fail("bad script");
+		}
+		else if (key == "trunk")
+		{
+			glm::ivec2 t;
+			if (!(in >> t.x >> t.y))
+				return fail("bad trunk");
+			result.trunks.push_back(t);
+		}
+		else if (key == "asteroids")
+		{
+			if (!(in >> result.asteroids) || result.asteroids < 0 || result.asteroids > 500)
+				return fail("asteroids must be 0..500");
+		}
 		else if (key == "ambient")
 		{
 			if (!(in >> result.ambient))
@@ -155,6 +181,12 @@ bool Level::save(const std::string& path) const
 	file << "sun " << sunDirection.x << ' ' << sunDirection.y << ' ' << sunDirection.z << "  "
 	     << sunColor.r << ' ' << sunColor.g << ' ' << sunColor.b << '\n';
 	file << "ambient " << ambient << '\n';
+	file << "sky " << sky << '\n';
+	file << "script " << script << '\n';
+	if (asteroids > 0)
+		file << "asteroids " << asteroids << '\n';
+	for (const glm::ivec2& t : trunks)
+		file << "trunk " << t.x << ' ' << t.y << '\n';
 	for (const PointLight& l : lights)
 		file << "light " << l.position.x << ' ' << l.position.y << ' ' << l.position.z << "  "
 		     << l.color.r << ' ' << l.color.g << ' ' << l.color.b << "  " << l.intensity << ' ' << l.radius << '\n';

@@ -37,7 +37,7 @@ vec3 sky(vec3 dir)
 void main()
 {
 	vec3 n = normalize(vNormal);
-	vec3 v = normalize(viewDir);
+	vec3 v = viewVector(vWorldPos);
 	float ndotv = clamp(dot(n, v), 0.0, 1.0);
 
 	// thickness: the chord the view ray cuts through the sphere at this pixel

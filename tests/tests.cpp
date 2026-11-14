@@ -260,8 +260,25 @@ static void testRainDensityAndSplashes()
 	CHECK(rain.drops.empty());
 }
 
+static void testTrunkIsSolidEverywhere()
+{
+	Level level = Level::flat(9, 3);
+	level.trunks.push_back({4, 1});
+	CHECK(level.solid(4, -30, 1) && level.solid(4, 0, 1) && level.solid(4, 40, 1));
+	CHECK(!level.standable(4, 1));
+	Player p;
+	p.placeAt(level, {1, 1});
+	stepFor(p, level, 2.0f, {1.0f, 0.0f}, true); // even jumping does not get through
+	CHECK(p.position.x + p.size.x * 0.5f <= 3.5f + 1e-3f);
+	auto path = findPath(level, {1, 1}, {7, 1});
+	CHECK(!path.empty());
+	for (const auto& t : path)
+		CHECK(!(t.x == 4 && t.y == 1)); // walks around it
+}
+
 int main()
 {
+	testTrunkIsSolidEverywhere();
 	testRainDensityAndSplashes();
 	testGravityLands();
 	testJumpOntoBlock();

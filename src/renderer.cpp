@@ -62,13 +62,128 @@ Renderer::~Renderer()
 	glDeleteTextures(1, &shadowTex);
 	glDeleteFramebuffers(1, &sceneFbo);
 	glDeleteTextures(1, &sceneColor);
-	glDeleteRenderbuffers(1, &sceneDepth);
+	glDeleteTextures(1, &sceneDepth);
+	glDeleteTextures(1, &sceneNormal);
 	glDeleteVertexArrays(1, &emptyVao);
 	glDeleteVertexArrays(1, &sphereVao);
 	glDeleteBuffers(1, &sphereVbo);
 	glDeleteBuffers(1, &sphereEbo);
 	glDeleteFramebuffers(1, &grabFbo);
 	glDeleteTextures(1, &grabTex);
+	glDeleteFramebuffers(2, bloomFbo);
+	glDeleteTextures(2, bloomTex);
+}
+
+void Renderer::drawSky(const Camera& camera, const RenderSettings& s, bool pixelate)
+{
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+	sky.use();
+	sky.set("mode", s.sky);
+	sky.set("viewOrigin", glm::vec3(static_cast<float>(pixelate ? 0 : viewX), 0.0f, 0.0f));
+	sky.set("viewSize", glm::vec3(static_cast<float>(pixelate ? sceneW : viewW), static_cast<float>(pixelate ? sceneH : height), 0.0f));
+	sky.set("camForward", camera.forward());
+	sky.set("camRight", camera.right());
+	sky.set("time", s.time);
+	sky.set("focus", camera.focus);
+	sky.set("brightness", s.skyBrightness);
+	sky.set("skyTop", s.skyTop);
+	sky.set("skyHorizon", s.skyHorizon);
+	sky.set("nightAmount", s.nightAmount);
+	sky.set("bloodMoon", s.bloodMoon);
+	sky.set("celestialDir", s.celestialDir);
+	sky.set("celestialColor", s.celestialColor);
+	sky.set("comets", s.comets ? 1 : 0);
+	sky.set("realView", camera.isPerspective() ? 1 : 0);
+	const glm::vec3 viewForward = -camera.toCamera();
+	const glm::vec3 viewRight = glm::normalize(glm::cross(viewForward, glm::vec3(0.0f, 1.0f, 0.0f)));
+	sky.set("viewForward", viewForward);
+	sky.set("viewUp", glm::cross(viewRight, viewForward));
+	sky.set("tanHalfFov", std::tan(camera.fieldOfView() * 0.5f));
+	glBindVertexArray(emptyVao);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	drawCalls++;
+	glDepthMask(GL_TRUE);
+	glEnable(GL_DEPTH_TEST);
+}
+
+void Renderer::applyBloom(const RenderSettings& s, bool pixelate)
+{
+	grabFrame(pixelate); // resolved copy of the scene with mipmaps
+
+	const int w = std::max(1, grabW / 4), h = std::max(1, grabH / 4);
+	if (!bloomFbo[0] || w != bloomW || h != bloomH)
+	{
+		if (!bloomFbo[0])
+		{
+			glGenFramebuffers(2, bloomFbo);
+			glGenTextures(2, bloomTex);
+		}
+		bloomW = w;
+		bloomH = h;
+		for (int i = 0; i < 2; i++)
+		{
+			glBindTexture(GL_TEXTURE_2D, bloomTex[i]);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindFramebuffer(GL_FRAMEBUFFER, bloomFbo[i]);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, bloomTex[i], 0);
+		}
+	}
+
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+	glBindVertexArray(emptyVao);
+	glViewport(0, 0, w, h);
+
+	// bright pass into [0]
+	glBindFramebuffer(GL_FRAMEBUFFER, bloomFbo[0]);
+	bloomExtract.use();
+	bloomExtract.set("source", 0);
+	bloomExtract.set("threshold", s.bloomThreshold);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, grabTex);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+
+	// blur: [0] -> [1] horizontally, [1] -> [0] vertically
+	bloomBlur.use();
+	bloomBlur.set("source", 0);
+	for (int pass = 0; pass < std::max(1, s.bloomPasses); pass++)
+	{
+		glBindFramebuffer(GL_FRAMEBUFFER, bloomFbo[1]);
+		bloomBlur.set("direction", glm::vec3(1.0f / static_cast<float>(w), 0.0f, 0.0f));
+		glBindTexture(GL_TEXTURE_2D, bloomTex[0]);
+		glDrawArrays(GL_TRIANGLES, 0, 3);
+		glBindFramebuffer(GL_FRAMEBUFFER, bloomFbo[0]);
+		bloomBlur.set("direction", glm::vec3(0.0f, 1.0f / static_cast<float>(h), 0.0f));
+		glBindTexture(GL_TEXTURE_2D, bloomTex[1]);
+		glDrawArrays(GL_TRIANGLES, 0, 3);
+	}
+
+	// add back onto the scene
+	glBindFramebuffer(GL_FRAMEBUFFER, pixelate ? sceneFbo : 0);
+	if (pixelate)
+		glViewport(0, 0, sceneW, sceneH);
+	else
+		glViewport(viewX, 0, viewW, height);
+	bloomComposite.use();
+	bloomComposite.set("bloom", 0);
+	bloomComposite.set("intensity", s.bloomIntensity);
+	bloomComposite.set("viewOrigin", glm::vec3(static_cast<float>(pixelate ? 0 : viewX), 0.0f, 0.0f));
+	bloomComposite.set("viewSize", glm::vec3(static_cast<float>(grabW), static_cast<float>(grabH), 0.0f));
+	glBindTexture(GL_TEXTURE_2D, bloomTex[0]);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glDisable(GL_BLEND);
+	drawCalls += 3 + 2 * s.bloomPasses;
+
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_CULL_FACE);
+	glBindVertexArray(0);
 }
 
 void Renderer::buildSphere()
@@ -149,6 +264,8 @@ void Renderer::drawGlassSphere(const Camera& camera, const Level& level, const G
 	glass.set("view", camera.view());
 	glass.set("projection", camera.projection());
 	glass.set("viewDir", camera.toCamera());
+	glass.set("cameraPos", camera.position());
+	glass.set("perspective", camera.isPerspective() ? 1 : 0);
 	glass.set("sunDir", glm::normalize(level.sunDirection));
 	glass.set("sunColor", level.sunColor);
 	glass.set("ambient", level.ambient);
@@ -183,7 +300,8 @@ void Renderer::ensureSceneTarget(int w, int h)
 	{
 		glGenFramebuffers(1, &sceneFbo);
 		glGenTextures(1, &sceneColor);
-		glGenRenderbuffers(1, &sceneDepth);
+		glGenTextures(1, &sceneDepth);
+		glGenTextures(1, &sceneNormal);
 	}
 	glBindTexture(GL_TEXTURE_2D, sceneColor);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
@@ -191,11 +309,26 @@ void Renderer::ensureSceneTarget(int w, int h)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glBindRenderbuffer(GL_RENDERBUFFER, sceneDepth);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+	// depth as a texture so the outline pass can read it
+	glBindTexture(GL_TEXTURE_2D, sceneDepth);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, w, h, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneColor, 0);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, sceneDepth);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, sceneDepth, 0);
+	// world-space normals of opaque geometry (alpha 1 = geometry), read by the outline pass
+	glBindTexture(GL_TEXTURE_2D, sceneNormal);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, sceneNormal, 0);
+	const GLenum buffers[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+	glDrawBuffers(2, buffers);
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		LOG_ERROR("renderer: pixelizer framebuffer is incomplete (%dx%d)", w, h);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -210,6 +343,10 @@ bool Renderer::init()
 	meshDepth = Shader(kShaderDir + "mesh_depth.vs", kShaderDir + "depth.fs");
 	post = Shader(kShaderDir + "post.vs", kShaderDir + "post.fs");
 	glass = Shader(kShaderDir + "glass.vs", kShaderDir + "glass.fs");
+	sky = Shader(kShaderDir + "post.vs", kShaderDir + "sky.fs");
+	bloomExtract = Shader(kShaderDir + "post.vs", kShaderDir + "bloom_extract.fs");
+	bloomBlur = Shader(kShaderDir + "post.vs", kShaderDir + "bloom_blur.fs");
+	bloomComposite = Shader(kShaderDir + "post.vs", kShaderDir + "bloom_composite.fs");
 	buildSphere();
 	glGenVertexArrays(1, &emptyVao);
 	if (!reloadShaders())
@@ -276,11 +413,13 @@ bool Renderer::init()
 
 bool Renderer::reloadShaders()
 {
-	bool ok = world.load() & depth.load() & unlit.load() & mesh.load() & meshDepth.load() & post.load() & glass.load();
+	bool ok = world.load() & depth.load() & unlit.load() & mesh.load() & meshDepth.load() & post.load() & glass.load() & sky.load() & bloomExtract.load() & bloomBlur.load() &
+	          bloomComposite.load();
 	glass.bindBlock("Lights", 0);
 	world.bindBlock("Lights", 0);
 	mesh.bindBlock("Lights", 0);
-	return ok && world.valid() && depth.valid() && unlit.valid() && mesh.valid() && meshDepth.valid() && post.valid() && glass.valid();
+	return ok && world.valid() && depth.valid() && unlit.valid() && mesh.valid() && meshDepth.valid() && post.valid() && glass.valid() && sky.valid() &&
+	       bloomExtract.valid() && bloomBlur.valid() && bloomComposite.valid();
 }
 
 void Renderer::reloadShadersIfChanged()
@@ -295,6 +434,10 @@ void Renderer::reloadShadersIfChanged()
 	post.reloadIfChanged();
 	if (glass.reloadIfChanged())
 		glass.bindBlock("Lights", 0);
+	sky.reloadIfChanged();
+	bloomExtract.reloadIfChanged();
+	bloomBlur.reloadIfChanged();
+	bloomComposite.reloadIfChanged();
 }
 
 void Renderer::drawMesh(Shader& shader, const MeshDraw& d, bool materials)
@@ -335,6 +478,8 @@ void Renderer::setLighting(Shader& shader, const Camera& camera, const Level& le
 	shader.set("projection", camera.projection());
 	shader.set("lightSpace", lightSpace);
 	shader.set("viewDir", camera.toCamera());
+	shader.set("cameraPos", camera.position());
+	shader.set("perspective", camera.isPerspective() ? 1 : 0);
 	shader.set("sunDir", glm::normalize(level.sunDirection));
 	shader.set("sunColor", level.sunColor);
 	shader.set("ambient", level.ambient);
@@ -356,6 +501,8 @@ void Renderer::setWeather(Shader& shader, const RenderSettings& settings)
 	shader.set("fogDistance", settings.fogDistance);
 	shader.set("fogFocus", settings.fogFocus);
 	shader.set("time", settings.time);
+	shader.set("shadingStyle", settings.shadingStyle);
+	shader.set("hatchSpacing", settings.hatchSpacing);
 }
 
 void Renderer::resize(int w, int h)
@@ -442,10 +589,12 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	}
 
 	// pixelizer: draw the scene into a low-res target, upscale at the end
-	const bool pixelate = settings.pixelSize > 1;
+	// offscreen when pixelating or drawing outlines (they need the depth as a texture)
+	const bool pixelate = settings.pixelSize > 1 || settings.outlines;
+	const int pixelSize = std::max(1, settings.pixelSize);
 	if (pixelate)
 	{
-		ensureSceneTarget(std::max(1, viewW / settings.pixelSize), std::max(1, height / settings.pixelSize));
+		ensureSceneTarget(std::max(1, viewW / pixelSize), std::max(1, height / pixelSize));
 		glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
 		glViewport(0, 0, sceneW, sceneH);
 	}
@@ -455,6 +604,16 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	}
 	glClearColor(settings.clearColor.r, settings.clearColor.g, settings.clearColor.b, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	if (pixelate)
+	{
+		const GLfloat noNormal[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+		glClearBufferfv(GL_COLOR, 1, noNormal);
+	}
+	// only opaque geometry writes normals; everything else leaves attachment 1 alone
+	glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	if (settings.sky != 0)
+		drawSky(camera, settings, pixelate);
+	glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
 	// 2. lights uniform block
 	LightBlock block{};
@@ -474,10 +633,11 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	glBindTexture(GL_TEXTURE_2D, shadowTex);
 	world.use();
 	setLighting(world, camera, level, lightSpace, lightCount, settings);
-	world.set("cutaway", settings.cutaway ? 1 : 0);
+	world.set("cutaway", settings.cutaway && !camera.isPerspective() ? 1 : 0); // nothing to see through in first person
 	world.set("cutawayCenter", settings.cutawayCenter);
 	world.set("cutawayRadius", settings.cutawayRadius);
 	world.set("cutawayFloor", settings.cutawayFloor);
+	world.set("cutawayDir", settings.cutawayDir);
 	draw(frame.opaque);
 
 	// 3b. skinned / static meshes
@@ -506,6 +666,7 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 		glDisable(GL_BLEND);
 	}
 
+	glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
 	// 5. transparent queue: overlay, particles and glass, far to near.
 	// Glass writes opaque colour over a copy of the frame, so everything behind a sphere
@@ -557,7 +718,12 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 		drawUntil(std::numeric_limits<float>::infinity());
 	}
 
+	// 6. bloom (before the pixelizer, so the glow is pixelated too)
+	if (settings.bloom)
+		applyBloom(settings, pixelate);
+
 	// 7. pixelizer upscale + posterize
+	glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	if (pixelate)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -568,6 +734,18 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 		post.set("scene", 0);
 		post.set("colorLevels", settings.colorLevels);
 		post.set("dither", settings.dither ? 1 : 0);
+		post.set("sceneDepth", 1);
+		post.set("sceneNormal", 3);
+		post.set("outlines", settings.outlines ? 1 : 0);
+		post.set("outlineColor", settings.outlineColor);
+		post.set("outlineWidth", settings.outlineWidth);
+		post.set("nearPlane", camera.nearPlane());
+		post.set("farPlane", camera.farPlane());
+		post.set("perspective", camera.isPerspective() ? 1 : 0);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, sceneNormal);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, sceneColor);
 		glBindVertexArray(emptyVao);

@@ -116,7 +116,7 @@ bool IsoMateric::init()
 	ctx.time = &elapsed;
 	ctx.assetsDir = kAssets;
 	scripts = std::make_unique<ScriptHost>(ctx);
-	scripts->load(kAssets + "/scripts/game.lua");
+	scripts->load(kAssets + "/" + level.script);
 	return true;
 }
 
@@ -163,6 +163,9 @@ void IsoMateric::loadLevel(const std::string& path)
 	setDayNight(false); // re-capture the new level's own sun below
 	level = std::move(loaded);
 	setDayNight(cycling);
+	generateAsteroids();
+	if (scripts)
+		scripts->load(kAssets + "/" + level.script); // each level can bring its own script
 	levelPath = path;
 	resetPlayer();
 }
@@ -245,13 +248,18 @@ void IsoMateric::run()
 		{
 			PROFILE_SCOPE("weather");
 			updateWeather(dt);
+			for (Asteroid& a : asteroids)
+				a.angle += a.speed * dt;
+			updateSky();
 		}
 
 		// camera after movement and collision, so it never trails a frame behind
-		if (followPlayer)
+		if (followPlayer || camera.isPerspective())
 			camera.focusGoal = player().position;
 		camera.update(dt);
-		camera.snapUnits = pixelSnap && renderSettings.pixelSize > 1 ? static_cast<float>(renderSettings.pixelSize) / camera.zoom : 0.0f;
+		if (camera.isPerspective())
+			camera.focus = camera.focusGoal; // no lag behind the player's head
+		camera.snapUnits = pixelSnap && renderSettings.pixelSize > 1 && !camera.isPerspective() ? static_cast<float>(renderSettings.pixelSize) / camera.zoom : 0.0f;
 
 		if (autoReload && (reloadTimer += dt) > 0.5f)
 		{
@@ -306,16 +314,35 @@ void IsoMateric::handleFrameInput(float dt)
 		camera.rotate(-1);
 	if (in.pressed(Action::Jump))
 		jumpRequested = true; // consumed by the next physics step
+	if (in.pressed(Action::CycleCamera))
+	{
+		setMouseLook(false);
+		camera.setMode(camera.isPerspective() ? Camera::Mode::Isometric : Camera::Mode::FirstPerson);
+	}
+
+	// first person: hold the right (play) or middle mouse to look. The look starts only when
+	// the press is on the scene, then keeps going until release even if the hidden cursor
+	// passes over the sidebar.
+	if (camera.isPerspective())
+	{
+		if (!mouseLooking && (in.mousePressed(GLFW_MOUSE_BUTTON_MIDDLE) || (mode == Mode::Play && in.mousePressed(GLFW_MOUSE_BUTTON_RIGHT))))
+			setMouseLook(true);
+		else if (mouseLooking && !in.mouseHeld(GLFW_MOUSE_BUTTON_MIDDLE) && !in.mouseHeld(GLFW_MOUSE_BUTTON_RIGHT))
+			setMouseLook(false);
+		if (mouseLooking)
+			camera.look(static_cast<float>(in.mouseDeltaX) * 0.0025f, static_cast<float>(in.mouseDeltaY) * 0.0025f);
+	}
+
 
 	// zoom: keys are continuous and frame-rate independent, the wheel steps
 	float zoomDir = (in.down(Action::ZoomIn) ? 1.0f : 0.0f) - (in.down(Action::ZoomOut) ? 1.0f : 0.0f);
 	camera.zoom *= std::exp(zoomDir * dt * 2.0f);
-	if (!in.mouseBlocked && in.scroll != 0.0f)
+	if (!in.mouseBlocked && in.scroll != 0.0f && !camera.isPerspective())
 		camera.zoom *= std::pow(1.15f, in.scroll);
 	camera.zoom = std::clamp(camera.zoom, kMinZoom, kMaxZoom);
 
 	// middle mouse drag pans the camera
-	if (in.mouseDown(GLFW_MOUSE_BUTTON_MIDDLE) && (in.mouseDeltaX != 0.0 || in.mouseDeltaY != 0.0))
+	if (!camera.isPerspective() && in.mouseDown(GLFW_MOUSE_BUTTON_MIDDLE) && (in.mouseDeltaX != 0.0 || in.mouseDeltaY != 0.0))
 	{
 		int fbW, fbH;
 		glfwGetFramebufferSize(window, &fbW, &fbH);
@@ -350,6 +377,22 @@ void IsoMateric::handleFrameInput(float dt)
 		player().path.assign(path.begin(), path.end());
 		audio.play(path.empty() ? "denied" : "click", 0.6f);
 	}
+}
+
+void IsoMateric::setMouseLook(bool on)
+{
+	if (on == mouseLooking)
+		return;
+	mouseLooking = on;
+	glfwSetInputMode(window, GLFW_CURSOR, on ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+	inputState.resetMotion();
+	if (on && glfwRawMouseMotionSupported())
+		glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+	ImGuiIO& io = ImGui::GetIO();
+	if (on)
+		io.ConfigFlags |= ImGuiConfigFlags_NoMouse; // ImGui must not react to the hidden cursor
+	else
+		io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
 }
 
 void IsoMateric::fixedUpdate(float dt)
@@ -441,6 +484,8 @@ void IsoMateric::buildFrame(FrameData& frame)
 	// see-through window around the player, cut in the world shader
 	renderSettings.cutawayCenter = player().position;
 	renderSettings.cutawayFloor = player().feet().y + 0.05f;
+	renderSettings.cutawayDir = camera.isPerspective() ? glm::normalize(camera.position() - player().position) : camera.toCamera();
+	const bool firstPerson = camera.mode() == Camera::Mode::FirstPerson;
 
 	const int maxH = std::max(level.maxHeight(), 2);
 	frame.boundsMin = glm::vec3(-0.5f);
@@ -472,6 +517,8 @@ void IsoMateric::buildFrame(FrameData& frame)
 		const Animator& anim = meshes.get<Animator>(entity);
 		if (!mr.model || anim.globals.empty())
 			continue;
+		if (firstPerson && entity == playerEntity)
+			continue; // the camera is inside the head
 		const Model& m = *mr.model;
 		float h = m.boundsMax.y - m.boundsMin.y;
 		float scale = h > 0.0f ? mr.height / h : 1.0f;
@@ -481,8 +528,60 @@ void IsoMateric::buildFrame(FrameData& frame)
 		               glm::scale(glm::mat4(1.0f), glm::vec3(scale)) * glm::translate(glm::mat4(1.0f), glm::vec3(-c.x, -m.boundsMin.y, -c.z));
 		frame.meshes.push_back({&m, xf, &anim.globals, &anim.joints, mr.tint});
 	}
-	if (!registry.all_of<MeshRenderer>(playerEntity))
+	if (!registry.all_of<MeshRenderer>(playerEntity) && !firstPerson)
 		frame.opaque.push_back({player().position, player().size, glm::vec4(0.9f, 0.2f, 0.2f, 1.0f)});
+
+	// endless tree trunks: bark from far below to far above, with branches and leaves
+	for (const glm::ivec2& t : level.trunks)
+	{
+		auto hash = [](int a, int b) {
+			unsigned h = static_cast<unsigned>(a) * 374761393u + static_cast<unsigned>(b) * 668265263u;
+			h = (h ^ (h >> 13)) * 1274126177u;
+			return static_cast<float>((h ^ (h >> 16)) & 0xffff) / 65535.0f;
+		};
+		const glm::vec3 base(static_cast<float>(t.x), 0.0f, static_cast<float>(t.y));
+		for (int y = -45; y <= 45; y++)
+		{
+			float v = hash(y, t.x * 31 + t.y);
+			glm::vec3 bark = glm::vec3(0.34f, 0.23f, 0.14f) * (0.8f + 0.4f * v);
+			frame.opaque.push_back({base + glm::vec3(0.0f, static_cast<float>(y), 0.0f), glm::vec3(1.0f), glm::vec4(bark, 1.0f)});
+
+			// a branch every few blocks, never right at the island (y -2 .. 4)
+			if ((y < -2 || y > 4) && hash(y * 7, t.x + 3) > 0.78f)
+			{
+				static const glm::vec3 dirs[4] = {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}};
+				glm::vec3 dir = dirs[static_cast<int>(hash(y, 99) * 3.99f)];
+				int length = 2 + static_cast<int>(hash(y, 7) * 3.0f);
+				for (int i = 1; i <= length; i++)
+				{
+					glm::vec3 p = base + glm::vec3(0.0f, static_cast<float>(y) + 0.25f * static_cast<float>(i), 0.0f) + dir * (0.5f + 0.55f * static_cast<float>(i));
+					frame.opaque.push_back({p, glm::vec3(0.5f), glm::vec4(bark * 0.95f, 1.0f)});
+				}
+				glm::vec3 tip = base + glm::vec3(0.0f, static_cast<float>(y) + 0.25f * static_cast<float>(length) + 0.4f, 0.0f) +
+				                dir * (0.6f + 0.55f * static_cast<float>(length));
+				for (int lx = -1; lx <= 1; lx++)
+					for (int lz = -1; lz <= 1; lz++)
+						for (int ly = 0; ly <= 1; ly++)
+						{
+							if (hash(lx * 5 + lz * 11 + ly * 3, y) < 0.25f)
+								continue;
+							float g = 0.75f + 0.5f * hash(lx + ly, lz + y);
+							frame.opaque.push_back({tip + glm::vec3(lx, ly, lz) * 0.55f, glm::vec3(0.6f),
+							                        glm::vec4(glm::vec3(0.22f, 0.45f, 0.24f) * g, 1.0f)});
+						}
+			}
+		}
+	}
+
+	// asteroids orbit the level centre
+	const glm::vec3 levelCenter(static_cast<float>(level.sizeX - 1) * 0.5f, 0.0f, static_cast<float>(level.sizeZ - 1) * 0.5f);
+	for (const Asteroid& a : asteroids)
+	{
+		glm::vec3 c = levelCenter + glm::vec3(std::cos(a.angle) * a.orbitRadius, a.height + std::sin(elapsed * 0.4f + a.bobPhase) * 0.3f,
+		                                      std::sin(a.angle) * a.orbitRadius);
+		for (const auto& [offset, size] : a.parts)
+			frame.opaque.push_back({c + offset, glm::vec3(size), glm::vec4(a.color, 1.0f)});
+	}
 
 	// glass
 	for (auto [entity, t, g] : registry.view<Transform, Glass>().each())
@@ -655,6 +754,13 @@ void IsoMateric::applyDayNight()
 	glm::vec3 daySky(0.36f, 0.50f, 0.70f), duskSky(0.45f, 0.20f, 0.12f);
 	renderSettings.clearColor = glm::mix(nightSky, daySky, day) + duskSky * twilight * 0.6f;
 
+	// sky backdrop colours
+	glm::vec3 nightTop = glm::mix(glm::vec3(0.008f, 0.012f, 0.035f), glm::vec3(0.07f, 0.0f, 0.01f), dayNight.bloodMoonFade);
+	renderSettings.skyTop = glm::mix(nightTop, glm::vec3(0.16f, 0.30f, 0.62f), day);
+	renderSettings.skyHorizon = glm::mix(nightSky * 1.6f, glm::vec3(0.62f, 0.74f, 0.86f), day) + duskSky * twilight * 0.9f;
+	renderSettings.nightAmount = 1.0f - day;
+	renderSettings.celestialDir = glm::normalize(toLight);
+	renderSettings.celestialColor = color;
 }
 
 void IsoMateric::updateWeather(float dt)
@@ -672,6 +778,57 @@ void IsoMateric::updateWeather(float dt)
 	renderSettings.fogFocus = camera.focus;
 	if (weather.fogFollowsSky)
 		renderSettings.fogColor = glm::min(renderSettings.clearColor * 1.25f + glm::vec3(0.04f), glm::vec3(1.0f));
+}
+
+void IsoMateric::updateSky()
+{
+	RenderSettings& rs = renderSettings;
+	rs.sky = level.sky == "galaxy" ? 2 : level.sky == "atmosphere" ? 1 : 0;
+	rs.bloodMoon = dayNight.bloodMoonFade;
+	if (!dayNight.running)
+	{
+		// no cycle: derive the backdrop from the level's own light and clear colour
+		const glm::vec3 c = rs.clearColor;
+		rs.skyTop = c * 0.5f;
+		rs.skyHorizon = c * 1.4f + glm::vec3(0.03f);
+		rs.nightAmount = 1.0f - glm::smoothstep(0.08f, 0.3f, glm::dot(c, glm::vec3(0.3f, 0.6f, 0.1f)));
+		rs.celestialDir = -glm::normalize(level.sunDirection);
+		rs.celestialColor = level.sunColor;
+	}
+	if (weather.fogFollowsSky)
+	{
+		if (rs.sky == 2)
+			rs.fogColor = glm::vec3(0.06f, 0.04f, 0.11f);
+		else if (rs.sky == 1)
+			rs.fogColor = rs.skyHorizon;
+	}
+}
+
+void IsoMateric::generateAsteroids()
+{
+	asteroids.clear();
+	std::mt19937 gen(4242); // same field every time the level loads
+	std::uniform_real_distribution<float> u(0.0f, 1.0f);
+	const float levelRadius = 0.5f * std::sqrt(static_cast<float>(level.sizeX * level.sizeX + level.sizeZ * level.sizeZ));
+	for (int i = 0; i < level.asteroids; i++)
+	{
+		Asteroid a;
+		a.orbitRadius = levelRadius + 3.0f + u(gen) * 9.0f;
+		a.angle = u(gen) * glm::two_pi<float>();
+		a.speed = (0.02f + u(gen) * 0.05f) * (u(gen) < 0.5f ? 1.0f : -1.0f);
+		a.height = -7.0f + u(gen) * 11.0f;
+		a.bobPhase = u(gen) * 6.28f;
+		int parts = 2 + static_cast<int>(u(gen) * 6.0f);
+		float scale = 0.4f + u(gen) * 0.9f;
+		for (int p = 0; p < parts; p++)
+		{
+			glm::vec3 offset = (glm::vec3(u(gen), u(gen), u(gen)) - 0.5f) * scale * 1.2f;
+			a.parts.push_back({offset, scale * (0.45f + u(gen) * 0.55f)});
+		}
+		float g = 0.35f + u(gen) * 0.2f;
+		a.color = glm::vec3(g, g * 0.92f, g * 0.85f);
+		asteroids.push_back(std::move(a));
+	}
 }
 
 void IsoMateric::drawLabels()
@@ -729,6 +886,8 @@ void IsoMateric::drawUi(float frameTime)
 			"Right click     lower column (editor)\n"
 			"Middle drag     pan camera\n"
 			"Q / E           rotate view\n"
+			"V               isometric / first person\n"
+			"RMB / MMB drag  look around (first person)\n"
 			"Wheel, + / -    zoom\n"
 			"T               follow player\n"
 			"F2              this window\n"
@@ -737,6 +896,18 @@ void IsoMateric::drawUi(float frameTime)
 
 	if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
 	{
+		int camMode = static_cast<int>(camera.mode());
+		const char* camModes[] = {"Isometric", "First person"};
+		if (ImGui::Combo("View (V)", &camMode, camModes, 2))
+		{
+			setMouseLook(false);
+			camera.setMode(static_cast<Camera::Mode>(camMode));
+		}
+		if (camera.isPerspective())
+		{
+			ImGui::SliderFloat("Field of view", &camera.fov, 40.0f, 110.0f, "%.0f deg");
+			ImGui::TextDisabled("right or middle mouse drag to look");
+		}
 		int style = camera.style == Camera::Style::Isometric ? 0 : 1;
 		const char* styles[] = {"True isometric (35.26 deg)", "2:1 dimetric (30 deg)"};
 		if (ImGui::Combo("Projection", &style, styles, 2))
@@ -806,6 +977,75 @@ void IsoMateric::drawUi(float frameTime)
 			ImGui::TextDisabled("stopping restores the level's own sun");
 	}
 
+	if (ImGui::CollapsingHeader("Sky", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		int skyMode = level.sky == "galaxy" ? 2 : level.sky == "atmosphere" ? 1 : 0;
+		const char* skies[] = {"Plain colour", "Atmosphere (day/night)", "Galaxy"};
+		if (ImGui::Combo("Backdrop", &skyMode, skies, 3))
+			level.sky = skyMode == 2 ? "galaxy" : skyMode == 1 ? "atmosphere" : "plain";
+		if (skyMode != 0)
+		{
+			ImGui::SliderFloat("Sky brightness", &renderSettings.skyBrightness, 0.2f, 2.0f);
+			ImGui::Checkbox("Comets", &renderSettings.comets);
+		}
+		if (ImGui::SliderInt("Asteroids", &level.asteroids, 0, 120))
+			generateAsteroids();
+	}
+
+	if (ImGui::CollapsingHeader("Style presets", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		// quick ways to try a look; every value stays editable in the sections below
+		RenderSettings& rs = renderSettings;
+		auto preset = [&](int pixel, int levels, bool dither, int shading, bool lines, bool bloom) {
+			rs.pixelSize = pixel;
+			rs.colorLevels = levels;
+			rs.dither = dither;
+			rs.shadingStyle = shading;
+			rs.outlines = lines;
+			rs.bloom = bloom;
+		};
+		if (ImGui::Button("Clean 3D"))
+			preset(1, 0, false, 0, false, false);
+		ImGui::SameLine();
+		if (ImGui::Button("Pixel art"))
+			preset(4, 16, false, 0, false, false);
+		ImGui::SameLine();
+		if (ImGui::Button("Retro"))
+			preset(5, 5, true, 1, false, false);
+		if (ImGui::Button("Cel + ink"))
+			preset(1, 0, false, 1, true, false);
+		ImGui::SameLine();
+		if (ImGui::Button("Pixel cel + ink"))
+			preset(4, 0, false, 1, true, false);
+		ImGui::SameLine();
+		if (ImGui::Button("Moebius"))
+			preset(1, 0, false, 2, true, false);
+		if (ImGui::Button("Dreamy (bloom)"))
+			preset(3, 0, false, 0, false, true);
+	}
+
+	if (ImGui::CollapsingHeader("Shading style"))
+	{
+		const char* styles[] = {"Smooth", "Cel", "Moebius (flat + hatching)"};
+		ImGui::Combo("Style", &renderSettings.shadingStyle, styles, 3);
+		if (renderSettings.shadingStyle == 2)
+			ImGui::SliderFloat("Hatch spacing", &renderSettings.hatchSpacing, 3.0f, 12.0f, "%.0f px");
+		ImGui::Checkbox("Ink outlines", &renderSettings.outlines);
+		if (renderSettings.outlines)
+		{
+			ImGui::SliderFloat("Line width", &renderSettings.outlineWidth, 1.0f, 3.0f, "%.0f px");
+			ImGui::ColorEdit3("Line colour", &renderSettings.outlineColor.x);
+		}
+	}
+
+	if (ImGui::CollapsingHeader("Bloom"))
+	{
+		ImGui::Checkbox("Enabled", &renderSettings.bloom);
+		ImGui::SliderFloat("Threshold", &renderSettings.bloomThreshold, 0.2f, 1.0f);
+		ImGui::SliderFloat("Strength", &renderSettings.bloomIntensity, 0.0f, 2.0f);
+		ImGui::SliderInt("Spread", &renderSettings.bloomPasses, 1, 5);
+	}
+
 	if (ImGui::CollapsingHeader("Weather", ImGuiTreeNodeFlags_DefaultOpen))
 	{
 		ImGui::Checkbox("Rain", &weather.raining);
@@ -839,6 +1079,7 @@ void IsoMateric::drawUi(float frameTime)
 	if (ImGui::CollapsingHeader("Script"))
 	{
 		ImGui::TextWrapped("%s", scripts->path().c_str());
+		ImGui::TextDisabled("set per level with a 'script' line");
 		if (scripts->failed())
 			ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "error: %s", scripts->error().c_str());
 		else
@@ -960,6 +1201,8 @@ void IsoMateric::drawUi(float frameTime)
 			setDayNight(false);
 			level = std::move(fresh);
 			setDayNight(cycling);
+			generateAsteroids();
+			scripts->load(kAssets + "/" + level.script);
 			resetPlayer();
 		}
 	}

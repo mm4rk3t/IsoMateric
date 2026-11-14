@@ -40,10 +40,10 @@ public:
 	// nx, ny in [0, 1], window coordinates (y grows downwards)
 	Ray screenRay(float nx, float ny) const;
 
-	Style style = Style::Isometric;
+	Style style = Style::Dimetric;
 	glm::vec3 focus{0.0f};
 	glm::vec3 focusGoal{0.0f};
-	float zoom = 48.0f;      // pixels per world unit
+	float zoom = 55.0f;      // pixels per world unit
 	float distance = 100.0f; // eye distance from focus, far enough that nothing is clipped
 	// world size of one output pixel block; when > 0 the view is snapped to it so a
 	// pixelated image does not shimmer while the camera moves (0 = off)

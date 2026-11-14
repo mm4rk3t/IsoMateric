@@ -42,9 +42,9 @@ public:
 	std::vector<int> heights;
 	glm::ivec2 spawn{0, 0};
 
-	glm::vec3 sunDirection{-0.4f, -1.0f, -0.25f}; // direction the light travels
-	glm::vec3 sunColor{1.0f, 0.95f, 0.85f};
-	float ambient = 0.3f;
+	glm::vec3 sunDirection{-0.43f, -0.33f, -0.38f}; // direction the light travels
+	glm::vec3 sunColor{0.992f, 0.239f, 0.251f};
+	float ambient = 0.058f;
 	std::vector<PointLight> lights;
 
 private:

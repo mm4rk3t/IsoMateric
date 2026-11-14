@@ -50,8 +50,8 @@ private:
 	void syncPlayerEntity(float dt);
 	void updateAnimation(float dt);
 	void buildFrame(FrameData& frame);
-	bool occludesPlayer(const glm::vec3& blockCenter) const;
 	void drawUi(float frameTime);
+	void updateLayout();
 
 	void loadLevel(const std::string& path);
 	void resetPlayer();
@@ -81,14 +81,15 @@ private:
 	bool jumpRequested = false;
 	Player::Events pendingEvents;
 	bool showDebug = true;
-	bool followPlayer = true;
-	bool cutaway = true;
+	bool followPlayer = false;
 	bool autoReload = true;
-	bool pixelSnap = true;
+	bool pixelSnap = false;
 	float reloadTimer = 0.0f;
 	float fpsSmoothed = 0.0f;
 	float elapsed = 0.0f;
 	int windowW = 1, windowH = 1;
+	float sidebarWidth = 340.0f; // debug sidebar, window coordinates; resizable
+	float viewX = 0.0f;          // where the scene starts, window coordinates
 };
 
 #endif

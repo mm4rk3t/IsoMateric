@@ -42,9 +42,15 @@ struct FrameData
 struct RenderSettings
 {
 	bool shadows = true;
-	int pixelSize = 1;      // pixelizer: >1 renders at window/pixelSize and upscales
-	int colorLevels = 0;    // pixelizer posterize: 0 = off, else levels per channel
-	bool dither = true;
+	int pixelSize = 4;      // pixelizer: >1 renders at window/pixelSize and upscales
+	int colorLevels = 16;    // pixelizer posterize: 0 = off, else levels per channel
+	bool dither = false;
+	// see-through window: block pixels between the camera and cutawayCenter, within
+	// cutawayRadius of the player on screen and above cutawayFloor, are discarded
+	bool cutaway = true;
+	float cutawayRadius = 0.9f;
+	glm::vec3 cutawayCenter{0.0f};
+	float cutawayFloor = 0.0f;
 	glm::vec3 clearColor{0.1f, 0.1f, 0.12f};
 };
 
@@ -58,6 +64,8 @@ public:
 
 	bool init();
 	void resize(int width, int height);
+	// horizontal slice of the framebuffer the scene is drawn into (the rest is UI)
+	void setViewRect(int x, int w);
 	void render(const Camera& camera, const Level& level, FrameData& frame, const RenderSettings& settings);
 	void reloadShadersIfChanged();
 	bool reloadShaders();
@@ -72,7 +80,8 @@ private:
 	void drawMesh(Shader& shader, const MeshDraw& mesh, bool materials);
 	void setLighting(Shader& shader, const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount,
 	                 const RenderSettings& settings);
-	glm::mat4 sunMatrix(const Level& level, const FrameData& frame) const;
+	glm::mat4 sunMatrix(const Level& level, const FrameData& frame);
+	float shadowTexelWorld = 0.01f; // world size of one shadow map texel
 	void ensureSceneTarget(int w, int h);
 
 	Shader world, depth, unlit, mesh, meshDepth, post;
@@ -82,6 +91,7 @@ private:
 	GLuint lightUbo = 0;
 	GLuint shadowFbo = 0, shadowTex = 0;
 	int width = 1, height = 1;
+	int viewX = 0, viewW = 1;
 };
 
 #endif

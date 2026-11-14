@@ -21,7 +21,9 @@ float sunShadow(vec4 lightSpacePos, vec3 n, vec3 l)
 	vec3 p = lightSpacePos.xyz / lightSpacePos.w * 0.5 + 0.5;
 	if (p.z > 1.0)
 		return 0.0;
-	float bias = max(0.002 * (1.0 - dot(n, l)), 0.0005);
+	// tiny constant bias in depth units; the real fix for acne is the normal offset
+	// applied in the vertex shader, a large bias here leaks light under walls
+	float bias = 0.0002;
 	vec2 texel = 1.0 / vec2(textureSize(shadowMap, 0));
 	float shadow = 0.0;
 	for (int x = -1; x <= 1; x++)

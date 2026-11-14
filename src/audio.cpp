@@ -4,6 +4,7 @@
 #include "miniaudio.h"
 
 #include <filesystem>
+#include <unordered_map>
 
 namespace
 {
@@ -18,6 +19,7 @@ struct Audio::Impl
 	int next = 0;
 	bool ready = false;
 	std::string dir;
+	std::unordered_map<std::string, std::unique_ptr<ma_sound>> loops;
 };
 
 Audio::Audio() : impl(std::make_unique<Impl>()) { }
@@ -29,6 +31,8 @@ Audio::~Audio()
 	for (int i = 0; i < kVoices; i++)
 		if (impl->voiceUsed[i])
 			ma_sound_uninit(&impl->voices[i]);
+	for (auto& [name, sound] : impl->loops)
+		ma_sound_uninit(sound.get());
 	ma_engine_uninit(&impl->engine);
 }
 
@@ -93,4 +97,31 @@ void Audio::play(const std::string& name, float gain)
 	impl->voiceUsed[slot] = true;
 	ma_sound_set_volume(&voice, gain);
 	ma_sound_start(&voice);
+}
+
+void Audio::setLoop(const std::string& name, float gain)
+{
+	if (!impl->ready)
+		return;
+	auto it = impl->loops.find(name);
+	if (it == impl->loops.end())
+	{
+		if (gain <= 0.0f)
+			return;
+		std::string file = impl->dir + "/" + name + ".wav";
+		auto sound = std::make_unique<ma_sound>();
+		if (ma_sound_init_from_file(&impl->engine, file.c_str(), MA_SOUND_FLAG_DECODE, nullptr, nullptr, sound.get()) != MA_SUCCESS)
+		{
+			LOG_WARN("audio: cannot loop '%s'", file.c_str());
+			return;
+		}
+		ma_sound_set_looping(sound.get(), MA_TRUE);
+		it = impl->loops.emplace(name, std::move(sound)).first;
+	}
+	ma_sound* sound = it->second.get();
+	ma_sound_set_volume(sound, gain);
+	if (gain > 0.0f && !ma_sound_is_playing(sound))
+		ma_sound_start(sound);
+	else if (gain <= 0.0f && ma_sound_is_playing(sound))
+		ma_sound_stop(sound);
 }

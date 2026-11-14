@@ -24,6 +24,7 @@ enum class Action
 	ToggleFollow,
 	ToggleDebug,
 	ToggleEditor,
+	CycleCamera,
 	Count
 };
 
@@ -37,6 +38,7 @@ public:
 	bool down(Action action) const;     // held this frame
 	bool pressed(Action action) const;  // went down this frame
 	bool mouseDown(int button) const;
+	bool mouseHeld(int button) const { return buttons[button]; } // ignores ImGui capture
 	bool mousePressed(int button) const;
 
 	// fed by GLFW callbacks
@@ -46,6 +48,9 @@ public:
 	void onScroll(double dy);
 
 	void endFrame();
+	// forget the last cursor position, e.g. when the cursor is captured and warped,
+	// so the jump is not read as movement
+	void resetMotion() { haveCursor = false; mouseDeltaX = mouseDeltaY = 0.0; }
 
 	double mouseX = 0.0, mouseY = 0.0;
 	double mouseDeltaX = 0.0, mouseDeltaY = 0.0;

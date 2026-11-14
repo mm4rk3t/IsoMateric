@@ -6,7 +6,8 @@ A small isometric engine in C++17 and OpenGL 3.3.
 
 - **World**: block height-map levels, an in-game editor, plain-text level files
 - **Rendering**: instanced blocks, directional shadows, up to 32 point lights, skinned glTF models,
-  particles, a pixelizer post-process, walls that fade when they hide the player
+  particles, refractive glass, a pixelizer post-process, a see-through window in walls that hide
+  the player
 - **Gameplay**: character controller with gravity, jumping and per-axis collision, A* click-to-move
   that climbs one block at a time
 - **Engine**: ECS (EnTT), Lua 5.4 scripting, sound (miniaudio), skeletal animation (cgltf),
@@ -45,6 +46,27 @@ In VS Code: F5 builds and runs under the debugger, Ctrl+Shift+B only builds.
 The debug sidebar on the left (F2 toggles it, drag its right edge to resize) controls the camera style (true isometric or 2:1 dimetric), lighting, the
 pixelizer, point lights, entities, audio volume and the profiler, and saves/loads levels.
 
+## Looks
+
+Everything below is a toggle for trying styles, not something meant to be on all at once. The
+sidebar's **Style presets** switch between Clean 3D, Pixel art, Retro, Cel + ink, Pixel cel + ink,
+Moebius and Dreamy (bloom); each value stays editable afterwards.
+
+- **Shading**: smooth, cel (banded light), or Moebius (two flat tones with ink hatching in shadow)
+- **Ink outlines**: drawn where surface normals turn or depth jumps, so a flat run of blocks stays
+  clean and lines appear only on silhouettes and edges
+- **Bloom**: bright pixels bleed light; applied before the pixelizer so the glow is pixelated too
+- **Sky backdrop** (per level, `sky` line): plain colour, atmosphere (gradient, sun/moon, clouds,
+  a sea of clouds below, stars and comets at night, follows the day/night cycle) or galaxy (Milky
+  Way band, nebulae, a spiral galaxy, stars, comets). The camera is orthographic, so instead of a
+  cubemap the sky is drawn from a virtual view that turns with the camera.
+
+## Camera
+
+Isometric is the default (true isometric or 2:1 dimetric). **V** toggles a first-person view for
+testing; drag with the right or middle mouse to look around. In isometric, walls between the
+camera and the player become see-through.
+
 ## Pixelizer
 
 Renders the scene at `window / pixel size` and scales it up without filtering, so every scene
@@ -52,11 +74,31 @@ pixel becomes a crisp block; the UI stays at full resolution. Options: colour le
 (posterize) with 4x4 Bayer dithering, and camera snapping to whole pixels so the image does not
 shimmer while the camera moves.
 
+## Day/night and weather
+
+The sidebar's **Day / night** section starts a test cycle: the sun rises in the east at 6:00
+and sets at 18:00 with warm light near the horizon, a cool moon lights the night, and ambient and
+sky colour follow. Each night has a chance of a **blood moon** (or trigger one from the sidebar):
+red pulsing moonlight, a crimson sky and fog, falling embers and an ominous sound until dawn;
+scripts get `blood_moon_start` / `blood_moon_end` events. Stopping the cycle restores the level's own sun (saving a level while it runs also
+saves the level's own sun). **Weather** adds rain (streaks around the camera, splashes on block
+tops, wet darker surfaces with sharper highlights, a looping rain sound) and fog: a low mist that
+drifts over the ground plus optional distance haze, coloured like the sky unless overridden.
+
+## Glass
+
+Glass spheres refract a copy of the frame drawn before them (screen-space, so they bend what is
+behind them on screen), tint by Beer-Lambert absorption over their thickness, reflect a sky with
+Schlick Fresnel, and blur with roughness. `dispersion` refracts red, green and blue with slightly
+different IORs. The default script places a labelled test row along the right edge of the level;
+each sphere's values can be edited live under Entities in the sidebar. Known limits: glass does not
+cast shadows, and a sphere seen through another one shows the background, not the other sphere.
+
 ## Scripting
 
 `assets/scripts/game.lua` runs on start and reloads when saved; entities a script spawned are
 removed on reload. It can define `on_start()`, `on_update(dt)` and
-`on_event(name, x, y, z)` (`"jump"`, `"land"`, `"respawn"`). The engine is the global `iso` table:
+`on_event(name, x, y, z)` (`"jump"`, `"land"`, `"respawn"`, `"blood_moon_start"`, `"blood_moon_end"`). The engine is the global `iso` table:
 
 | Function | |
 |---|---|
@@ -64,8 +106,10 @@ removed on reload. It can define `on_start()`, `on_update(dt)` and
 | `iso.play_animation(e, clip [, speed])` | `speed` 0 pauses |
 | `iso.set_position(e, x, y, z)`, `iso.get_position(e)` | |
 | `iso.set_yaw(e, degrees)` | |
+| `iso.set_tint(e, r, g, b)` | multiply a model's colours |
 | `iso.spawn_emitter(preset, x, y, z)` | continuous particles: `"fire"`, `"smoke"`, `"sparkle"` |
 | `iso.burst(preset, x, y, z)` | one-shot particles, e.g. `"dust"` |
+| `iso.spawn_glass(x, y, z [, opts])` | glass sphere; `opts`: `radius`, `ior`, `roughness`, `absorption`, `dispersion`, `tint = {r, g, b}`, `label` |
 | `iso.destroy(e)`, `iso.player()` | |
 | `iso.play_sound(name [, volume])` | plays `assets/sounds/<name>.wav` |
 | `iso.height(x, z)` | column height |
@@ -82,11 +126,17 @@ spawn 12 3                      # player start tile
 sun -0.4 -1 -0.25  1 0.95 0.85  # direction, colour
 ambient 0.3
 light 5.5 2.5 8  1 0.55 0.25  1.2 6   # position, colour, intensity, radius (max 32)
+sky galaxy                      # plain | atmosphere | galaxy
+script scripts/game.lua         # the level's Lua script
+asteroids 40                    # block asteroids orbiting the level
+trunk 10 10                     # an endless tree trunk through that column
 heights                         # one row per x; 0 = hole, 1 = floor, each extra = one block up
 1 1 1 ...
 ```
 
 The player can climb one block by jumping; falling into a hole respawns them.
+`assets/levels/sky_island.level` is a floating town square in space with a galaxy sky, asteroids
+and an endless tree through the middle.
 
 ## Layout
 

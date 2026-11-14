@@ -10,11 +10,80 @@ layout (std140) uniform Lights
 
 uniform int numLights;
 uniform vec3 viewDir;   // towards the camera (orthographic, so constant)
+uniform vec3 cameraPos;
+uniform bool perspective;
+
+// direction from a surface point towards the eye
+vec3 viewVector(vec3 worldPos)
+{
+	return perspective ? normalize(cameraPos - worldPos) : normalize(viewDir);
+}
 uniform vec3 sunDir;    // direction the sunlight travels
 uniform vec3 sunColor;
 uniform float ambient;
 uniform bool shadowsEnabled;
 uniform sampler2D shadowMap;
+
+// weather
+uniform float wetness;       // 0 dry .. 1 soaked: darker surfaces, sharper highlights
+uniform bool fogEnabled;
+uniform vec3 fogColor;
+uniform float fogDensity;    // ground mist strength
+uniform float fogHeight;     // how high the mist reaches above fogBase
+uniform float fogBase;       // ground level of the mist
+uniform float fogDistance;   // extra haze per unit of distance from fogFocus
+uniform vec3 fogFocus;       // usually the camera focus
+uniform float time;
+
+// shading style: 0 smooth, 1 cel (banded), 2 Moebius (two flat tones + ink hatching)
+uniform int shadingStyle;
+uniform float hatchSpacing; // screen pixels between hatch lines
+
+float band(float x)
+{
+	// cel bands: deep shadow, half tone, lit
+	return x > 0.55 ? 1.0 : x > 0.18 ? 0.55 : 0.18;
+}
+
+// diagonal ink lines in screen space; a second, crossing set for the darkest tone
+float hatch(float lightAmount)
+{
+	vec2 p = gl_FragCoord.xy;
+	float lineA = step(fract((p.x + p.y) / hatchSpacing), 0.28);
+	float lineB = step(fract((p.x - p.y) / hatchSpacing), 0.28);
+	float ink = 0.0;
+	if (lightAmount < 0.5)
+		ink = lineA;
+	if (lightAmount < 0.2)
+		ink = max(ink, lineB);
+	return ink;
+}
+
+float hash(vec2 p)
+{
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float valueNoise(vec2 p)
+{
+	vec2 i = floor(p), f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+}
+
+// low-lying mist that drifts slowly, thicker near the ground, plus distance haze
+vec3 applyFog(vec3 color, vec3 p)
+{
+	if (!fogEnabled)
+		return color;
+	float layer = exp(-max(p.y - fogBase, 0.0) / max(fogHeight, 0.01));
+	float drift = valueNoise(p.xz * 0.35 + vec2(time * 0.25, time * 0.11)) * 0.6
+	            + valueNoise(p.xz * 0.9 - vec2(time * 0.17, -time * 0.21)) * 0.4;
+	float mist = fogDensity * layer * (0.55 + 0.9 * drift);
+	float haze = length(p.xz - fogFocus.xz) * fogDistance;
+	float f = 1.0 - exp(-(mist + haze));
+	return mix(color, fogColor, clamp(f, 0.0, 0.95));
+}
 
 float sunShadow(vec4 lightSpacePos, vec3 n, vec3 l)
 {
@@ -35,13 +104,45 @@ float sunShadow(vec4 lightSpacePos, vec3 n, vec3 l)
 vec3 shade(vec3 base, vec3 worldPos, vec3 normal, vec4 lightSpacePos)
 {
 	vec3 n = normalize(normal);
-	vec3 v = normalize(viewDir);
+	vec3 v = viewVector(worldPos);
+	base *= 1.0 - 0.35 * wetness; // wet materials look darker
+	float shininess = mix(32.0, 96.0, wetness);
+	float specAmount = mix(0.3, 1.2, wetness);
 
 	// sun (Lambert)
 	vec3 l = normalize(-sunDir);
 	float sunAmount = max(dot(n, l), 0.0);
 	float shadow = shadowsEnabled ? sunShadow(lightSpacePos, n, l) : 0.0;
-	vec3 color = base * ambient + base * sunColor * sunAmount * (1.0 - shadow);
+	float sunLight = sunAmount * (1.0 - shadow);
+
+	if (shadingStyle == 2)
+	{
+		// Moebius: flat, slightly washed-out colours, one light/shadow split and hatching
+		vec3 flatBase = mix(base, vec3(dot(base, vec3(0.3, 0.59, 0.11))), 0.15) * 1.08;
+		float lit = sunLight > 0.35 ? 1.0 : 0.0;
+		float points = 0.0;
+		vec3 pointTint = vec3(0.0);
+		for (int i = 0; i < numLights; i++)
+		{
+			vec3 toLight = lightPositionRadius[i].xyz - worldPos;
+			float dist = length(toLight);
+			float falloff = clamp(1.0 - dist / lightPositionRadius[i].w, 0.0, 1.0);
+			float d = max(dot(n, toLight / max(dist, 1e-4)), 0.0) * falloff * lightColorIntensity[i].a;
+			if (d > 0.25)
+			{
+				points = max(points, 1.0);
+				pointTint += lightColorIntensity[i].rgb * 0.35;
+			}
+		}
+		float amount = max(lit, points * 0.8);
+		vec3 tone = mix(flatBase * (ambient + 0.35), flatBase * (ambient + sunColor * 0.9 + 0.1), lit) + flatBase * pointTint;
+		return mix(tone, tone * 0.35, hatch(amount + ambient * 0.5));
+	}
+	if (shadingStyle == 1)
+		sunLight = band(sunLight);
+
+	vec3 color = base * ambient + base * sunColor * sunLight;
+	color += sunColor * pow(max(dot(n, normalize(l + v)), 0.0), shininess) * wetness * (1.0 - shadow) * 0.6;
 
 	// point lights (Blinn-Phong with smooth range falloff)
 	for (int i = 0; i < numLights; i++)
@@ -55,7 +156,12 @@ vec3 shade(vec3 base, vec3 worldPos, vec3 normal, vec4 lightSpacePos)
 
 		vec3 ld = toLight / max(dist, 1e-4);
 		float diffuse = max(dot(n, ld), 0.0);
-		float specular = pow(max(dot(n, normalize(ld + v)), 0.0), 32.0) * 0.3;
+		float specular = pow(max(dot(n, normalize(ld + v)), 0.0), shininess) * specAmount;
+		if (shadingStyle == 1)
+		{
+			diffuse = band(diffuse * falloff) / max(falloff, 1e-3);
+			specular = step(0.5, specular);
+		}
 		vec3 light = lightColorIntensity[i].rgb * lightColorIntensity[i].a * falloff;
 		color += (base * diffuse + specular) * light;
 	}

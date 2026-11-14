@@ -132,6 +132,17 @@ namespace
 		return 0;
 	}
 
+	// iso.set_tint(entity, r, g, b)   multiplies a model's colours (1, 1, 1 = original)
+	int apiSetTint(lua_State* L)
+	{
+		entt::entity e = checkEntity(L, 1);
+		auto* mr = ctxOf(L).registry->try_get<MeshRenderer>(e);
+		if (!mr)
+			return luaL_error(L, "entity has no model");
+		mr->tint = glm::vec4(checkVec3(L, 2), 1.0f);
+		return 0;
+	}
+
 	entt::entity spawnEmitter(lua_State* L, bool oneShot)
 	{
 		ScriptContext& ctx = ctxOf(L);
@@ -162,6 +173,54 @@ namespace
 	{
 		spawnEmitter(L, true);
 		return 0;
+	}
+
+	float optField(lua_State* L, int table, const char* key, float fallback)
+	{
+		lua_getfield(L, table, key);
+		float v = lua_isnumber(L, -1) ? static_cast<float>(lua_tonumber(L, -1)) : fallback;
+		lua_pop(L, 1);
+		return v;
+	}
+
+	// iso.spawn_glass(x, y, z [, { radius, ior, roughness, absorption, dispersion,
+	//                              tint = {r, g, b}, label }]) -> entity
+	int apiSpawnGlass(lua_State* L)
+	{
+		ScriptContext& ctx = ctxOf(L);
+		glm::vec3 pos = checkVec3(L, 1);
+		Glass g;
+		std::string label = "glass";
+		if (lua_istable(L, 4))
+		{
+			g.radius = optField(L, 4, "radius", g.radius);
+			g.ior = optField(L, 4, "ior", g.ior);
+			g.roughness = optField(L, 4, "roughness", g.roughness);
+			g.absorption = optField(L, 4, "absorption", g.absorption);
+			g.dispersion = optField(L, 4, "dispersion", g.dispersion);
+			if (lua_getfield(L, 4, "tint") == LUA_TTABLE)
+			{
+				for (int i = 0; i < 3; i++)
+				{
+					lua_rawgeti(L, -1, i + 1);
+					if (lua_isnumber(L, -1))
+						g.tint[i] = static_cast<float>(lua_tonumber(L, -1));
+					lua_pop(L, 1);
+				}
+			}
+			lua_pop(L, 1);
+			if (lua_getfield(L, 4, "label") == LUA_TSTRING)
+				label = lua_tostring(L, -1);
+			lua_pop(L, 1);
+		}
+		entt::registry& reg = *ctx.registry;
+		entt::entity e = reg.create();
+		reg.emplace<Transform>(e, Transform{pos, 0.0f});
+		reg.emplace<Glass>(e, g);
+		reg.emplace<Name>(e, Name{label});
+		reg.emplace<ScriptOwned>(e);
+		pushEntity(L, e);
+		return 1;
 	}
 
 	int apiDestroy(lua_State* L)
@@ -259,8 +318,10 @@ bool ScriptHost::load(const std::string& path)
 		{"set_position", apiSetPosition},
 		{"get_position", apiGetPosition},
 		{"set_yaw", apiSetYaw},
+		{"set_tint", apiSetTint},
 		{"spawn_emitter", apiSpawnEmitter},
 		{"burst", apiBurst},
+		{"spawn_glass", apiSpawnGlass},
 		{"destroy", apiDestroy},
 		{"player", apiPlayer},
 		{"play_sound", apiPlaySound},

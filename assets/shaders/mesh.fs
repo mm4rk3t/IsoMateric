@@ -6,6 +6,7 @@ in vec2 vUV;
 in vec4 vLightSpacePos;
 
 out vec4 FragColor;
+layout (location = 1) out vec4 NormalOut; // for the outline pass
 
 uniform vec4 baseColor;
 uniform bool hasTexture;
@@ -18,5 +19,7 @@ void main()
 	vec4 base = baseColor;
 	if (hasTexture)
 		base *= texture(albedo, vUV);
-	FragColor = vec4(shade(base.rgb, vWorldPos, vNormal, vLightSpacePos), base.a);
+	vec3 lit = shade(base.rgb, vWorldPos, vNormal, vLightSpacePos);
+	NormalOut = vec4(normalize(vNormal) * 0.5 + 0.5, 1.0);
+	FragColor = vec4(applyFog(lit, vWorldPos), base.a);
 }

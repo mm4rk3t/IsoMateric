@@ -9,6 +9,7 @@
 #include "player.h"
 #include "renderer.h"
 #include "scripting.h"
+#include "weather.h"
 
 #include <entt.hpp>
 #include <glm/glm.hpp>
@@ -51,6 +52,9 @@ private:
 	void updateAnimation(float dt);
 	void buildFrame(FrameData& frame);
 	void drawUi(float frameTime);
+	void drawLabels();
+	void setDayNight(bool enabled);
+	void applyDayNight();
 	void updateLayout();
 
 	void loadLevel(const std::string& path);
@@ -79,11 +83,53 @@ private:
 	int newLevelSize[2] = {16, 16};
 
 	bool jumpRequested = false;
+	bool mouseLooking = false; // first person: cursor captured while a look button is held
+	void setMouseLook(bool on);
 	Player::Events pendingEvents;
 	bool showDebug = true;
 	bool followPlayer = false;
 	bool autoReload = true;
 	bool pixelSnap = false;
+	bool showLabels = false;
+
+	// day/night test cycle; overrides the level's sun while running and restores it after
+	struct DayNight
+	{
+		bool running = false;
+		float hour = 8.0f;   // 0..24
+		float speed = 1.0f;  // in-game hours per real second
+		glm::vec3 savedSunDirection{0.0f}, savedSunColor{0.0f}, savedClear{0.0f};
+		float savedAmbient = 0.0f;
+
+		// blood moon: rolled at dusk, lasts until dawn
+		bool bloodMoon = false;
+		float bloodMoonChance = 0.25f; // per night
+		float bloodMoonFade = 0.0f;    // 0..1, eased so the sky turns red gradually
+		entt::entity ash = entt::null; // falling ash emitter that follows the camera
+	} dayNight;
+	void advanceDayNight(float dt);
+	void setBloodMoon(bool active);
+
+	struct Weather
+	{
+		bool raining = false;
+		float rainIntensity = 0.7f;
+		glm::vec2 wind{1.5f, 0.6f};
+		bool fogFollowsSky = true;
+	} weather;
+	Rain rain;
+	void updateWeather(float dt);
+	void updateSky();
+
+	// decorative block asteroids orbiting the level (count comes from the level file)
+	struct Asteroid
+	{
+		float orbitRadius, angle, speed, height, bobPhase;
+		std::vector<std::pair<glm::vec3, float>> parts; // offset, cube size
+		glm::vec3 color;
+	};
+	std::vector<Asteroid> asteroids;
+	void generateAsteroids();
 	float reloadTimer = 0.0f;
 	float fpsSmoothed = 0.0f;
 	float elapsed = 0.0f;

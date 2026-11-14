@@ -45,4 +45,15 @@ struct Name
 // created by Lua; removed when the script reloads
 struct ScriptOwned { };
 
+// A refractive glass sphere centred on Transform::position.
+struct Glass
+{
+	float radius = 0.4f;
+	glm::vec3 tint{1.0f};     // colour absorbed through the thickness
+	float ior = 1.5f;         // index of refraction: 1.0 air, 1.33 water, 1.5 glass, 2.4 diamond
+	float roughness = 0.0f;   // 0 clear .. 1 frosted
+	float absorption = 0.0f;  // how fast the tint builds up with thickness
+	float dispersion = 0.0f;  // per-channel IOR spread (rainbow fringes)
+};
+
 #endif

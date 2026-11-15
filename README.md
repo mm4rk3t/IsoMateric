@@ -8,7 +8,7 @@ A small isometric engine in C++17 and OpenGL 3.3.
 
 - **World**: block height-map levels, an in-game editor, plain-text level files
 - **Rendering**: instanced blocks, directional shadows, up to 32 point lights, skinned glTF models,
-  particles, refractive glass, a pixelizer post-process, a see-through window in walls that hide
+  particles, refractive glass, planar mirrors, a pixelizer post-process, a see-through window in walls that hide
   the player
 - **Atmosphere**: day/night cycle with blood moons, sky backdrops (atmosphere, galaxy, overcast),
   rain and lightning, wind-driven grass, fog, god rays, flickering torches, bloom, colour grading
@@ -42,7 +42,7 @@ In VS Code: F5 builds and runs under the debugger, Ctrl+Shift+B only builds.
 | Middle drag | pan the camera | pan the camera |
 | Q / E | rotate the view | rotate the view |
 | Wheel, + / - | zoom | zoom |
-| T | follow the player on/off | |
+| T | follow the player on/off (on by default; panning turns it off) | |
 | Tab | switch to editor | switch to play |
 | F2 | debug window | debug window |
 | Esc | quit | quit |
@@ -115,6 +115,7 @@ removed on reload. It can define `on_start()`, `on_update(dt)` and
 | `iso.burst(preset, x, y, z)` | one-shot particles, e.g. `"dust"` |
 | `iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow])` | decorative box (props, roofs, signs); no collision, glowing boxes are unlit |
 | `iso.spawn_glass(x, y, z [, opts])` | glass sphere; `opts`: `radius`, `ior`, `roughness`, `absorption`, `dispersion`, `tint = {r, g, b}`, `label` |
+| `iso.spawn_mirror(x, y, z, w, h [, yaw [, opts]])` | vertical mirror centred at x, y, z; `yaw` in degrees (0 faces +z, 90 faces +x); `opts`: `tarnish` (0..1), `tint = {r, g, b}`, `label`. Reflects blocks, grass and models; each visible mirror redraws the world once (up to 4) |
 | `iso.destroy(e)`, `iso.player()` | |
 | `iso.play_sound(name [, volume])` | plays `assets/sounds/<name>.wav` |
 | `iso.height(x, z)` | column height |

@@ -9,6 +9,7 @@ layout (location = 4) in vec4 iColor;
 uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 lightSpace;
+uniform vec4 clipPlane; // mirror passes cut away what is behind the glass (GL_CLIP_DISTANCE0)
 uniform float shadowNormalOffset; // world units; pushes the shadow lookup off the surface
 
 out vec3 vWorldPos;
@@ -24,5 +25,6 @@ void main()
 	vNormal = aNormal;
 	vColor = iColor;
 	vLightSpacePos = lightSpace * vec4(world + aNormal * shadowNormalOffset, 1.0);
+	gl_ClipDistance[0] = dot(vec4(world, 1.0), clipPlane);
 	gl_Position = projection * view * vec4(world, 1.0);
 }

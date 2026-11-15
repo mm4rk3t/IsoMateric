@@ -223,6 +223,44 @@ namespace
 		return 1;
 	}
 
+	// iso.spawn_mirror(x, y, z, width, height, yaw_degrees [, {tint = {r, g, b}, tarnish = 0..1, label = "..."}]) -> entity
+	// a vertical mirror centred at x, y, z; yaw 0 faces +z, 90 faces +x. Only the front reflects.
+	int apiSpawnMirror(lua_State* L)
+	{
+		ScriptContext& ctx = ctxOf(L);
+		glm::vec3 pos = checkVec3(L, 1);
+		Mirror m;
+		m.size = glm::vec2(static_cast<float>(luaL_checknumber(L, 4)), static_cast<float>(luaL_checknumber(L, 5)));
+		float yaw = glm::radians(static_cast<float>(luaL_optnumber(L, 6, 0.0)));
+		std::string label = "mirror";
+		if (lua_istable(L, 7))
+		{
+			m.tarnish = optField(L, 7, "tarnish", m.tarnish);
+			if (lua_getfield(L, 7, "tint") == LUA_TTABLE)
+			{
+				for (int i = 0; i < 3; i++)
+				{
+					lua_rawgeti(L, -1, i + 1);
+					if (lua_isnumber(L, -1))
+						m.tint[i] = static_cast<float>(lua_tonumber(L, -1));
+					lua_pop(L, 1);
+				}
+			}
+			lua_pop(L, 1);
+			if (lua_getfield(L, 7, "label") == LUA_TSTRING)
+				label = lua_tostring(L, -1);
+			lua_pop(L, 1);
+		}
+		entt::registry& reg = *ctx.registry;
+		entt::entity e = reg.create();
+		reg.emplace<Transform>(e, Transform{pos, yaw});
+		reg.emplace<Mirror>(e, m);
+		reg.emplace<Name>(e, Name{label});
+		reg.emplace<ScriptOwned>(e);
+		pushEntity(L, e);
+		return 1;
+	}
+
 	// iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow]) -> entity
 	// a decorative box centred at x, y, z; walk-through, casts shadows unless glowing
 	int apiSpawnBox(lua_State* L)
@@ -342,6 +380,7 @@ bool ScriptHost::load(const std::string& path)
 		{"burst", apiBurst},
 		{"spawn_glass", apiSpawnGlass},
 		{"spawn_box", apiSpawnBox},
+		{"spawn_mirror", apiSpawnMirror},
 		{"destroy", apiDestroy},
 		{"player", apiPlayer},
 		{"play_sound", apiPlaySound},

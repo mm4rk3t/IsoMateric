@@ -60,6 +60,39 @@ local function build_arch()
 	stone(32.5, top + 1.05, zc, 0.65, 0.16, 0.16, 0.7)
 end
 
+-- A tall gothic standing mirror on the grass: dark wooden frame with a pointed top,
+-- a backing so the back is not empty, and feet. facing = "x-" faces -x, "z+" faces +z.
+local function standing_mirror(x, z, facing, tarnish)
+	local w, h = 1.3, 2.3
+	local cy = 0.5 + 0.35 + h * 0.5         -- glass centre: floor top + feet + half height
+	local yaw = facing == "x-" and -90 or 0
+	-- along = the glass's width direction, n = the direction it faces
+	local ax, az = 1, 0
+	local nx, nz = 0, 1
+	if facing == "x-" then ax, az, nx, nz = 0, 1, -1, 0 end
+	local wood = { 0.16, 0.10, 0.08 }
+	local function part(u, v, depth, su, sv, sd, col)
+		-- u along the glass, v up, depth along the normal (negative = behind the glass)
+		local px, pz = x + ax * u + nx * depth, z + az * u + nz * depth
+		local sx = math.abs(ax) * su + math.abs(nx) * sd
+		local sz = math.abs(az) * su + math.abs(nz) * sd
+		box(px, v, pz, sx, sv, sz, col[1], col[2], col[3])
+	end
+	part(0, cy, -0.09, w + 0.2, h + 0.2, 0.1, wood)                 -- backing
+	part(-(w + 0.1) * 0.5, cy, -0.02, 0.12, h + 0.2, 0.12, wood)     -- sides
+	part((w + 0.1) * 0.5, cy, -0.02, 0.12, h + 0.2, 0.12, wood)
+	part(0, cy - h * 0.5 - 0.06, -0.02, w + 0.3, 0.12, 0.14, wood)   -- bottom rail
+	part(0, cy + h * 0.5 + 0.06, -0.02, w + 0.3, 0.12, 0.14, wood)   -- top rail
+	for i = 0, 3 do                                                  -- pointed crest
+		local s = (w + 0.2) * (1 - i / 4)
+		part(0, cy + h * 0.5 + 0.2 + i * 0.16, -0.05, s, 0.16, 0.12, wood)
+	end
+	part(0, cy + h * 0.5 + 0.95, -0.05, 0.08, 0.3, 0.08, wood)      -- finial
+	part(-w * 0.4, 0.68, -0.05, 0.14, 0.36, 0.5, wood)               -- feet
+	part(w * 0.4, 0.68, -0.05, 0.14, 0.36, 0.5, wood)
+	iso.spawn_mirror(x + nx * 0.03, cy, z + nz * 0.03, w, h, yaw, { tarnish = tarnish, tint = { 0.9, 0.92, 0.95 } })
+end
+
 -- iron sconce under a torch light
 local function sconce(x, y, z, wall_z)
 	local dir = z < wall_z and 1 or -1 -- towards the pillar face
@@ -72,6 +105,10 @@ function on_start()
 	iso.log("game.lua started")
 
 	build_arch()
+
+	-- two old mirrors: one beside the path facing it, one facing back at the arch
+	standing_mirror(35.0, 22.5, "x-", 0.25)
+	standing_mirror(27.5, 25.5, "z+", 0.6)
 
 	-- a torch at every point light: sconce, flame and a flickering light
 	for i = 1, iso.light_count() do

@@ -257,7 +257,7 @@ void IsoMateric::createPlayer()
 	registry.emplace<Name>(playerEntity, Name{"player"});
 	if (auto model = models.get(kAssets + "/" + kPlayerModel))
 	{
-		registry.emplace<MeshRenderer>(playerEntity, MeshRenderer{model, 1.1f, kPlayerModelYaw, glm::vec4(1.0f)});
+		registry.emplace<MeshRenderer>(playerEntity, MeshRenderer{model, 1.8f, kPlayerModelYaw, glm::vec4(1.0f)});
 		registry.emplace<Animator>(playerEntity);
 	}
 }

@@ -93,10 +93,9 @@ private:
 	void setMouseLook(bool on);
 	Player::Events pendingEvents;
 	bool showDebug = true;
-	// first-person eye above the feet. The model is 1.1 tall, which reads well from above,
-	// but the world is built at 1 block ~ 1 m, so the eye sits at adult height instead
-	float eyeHeight = 1.6f;
-	float eyeNow = 1.6f; // eased towards eyeHeight (lower while crouching)
+	// first-person eye above the feet; the player is 1.8 tall in a world of 1 block ~ 1 m
+	float eyeHeight = 1.68f;
+	float eyeNow = 1.68f; // eased towards eyeHeight (lower while crouching)
 	bool followPlayer = true; // on by default; panning with the mouse turns it off, T toggles
 	bool autoReload = true;
 	bool pixelSnap = false;

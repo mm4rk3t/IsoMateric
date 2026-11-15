@@ -20,6 +20,7 @@ struct ScriptContext
 	Audio* audio = nullptr;
 	ModelCache* models = nullptr;
 	entt::entity player = entt::null;
+	class Inventory* inventory = nullptr;
 	const float* time = nullptr;
 	std::string assetsDir;
 };

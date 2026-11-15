@@ -1,6 +1,7 @@
 #include "scripting.h"
 #include "audio.h"
 #include "components.h"
+#include "inventory.h"
 #include "level.h"
 #include "log.h"
 #include "model.h"
@@ -261,7 +262,33 @@ namespace
 		return 1;
 	}
 
-	// iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow]) -> entity
+	// iso.spawn_pickup(item_id, x, y, z) -> entity: an item the player can pick up with F
+	int apiSpawnPickup(lua_State* L)
+	{
+		ScriptContext& ctx = ctxOf(L);
+		std::string id = luaL_checkstring(L, 1);
+		if (!findItem(id))
+			return luaL_error(L, "unknown item '%s'", id.c_str());
+		glm::vec3 pos(static_cast<float>(luaL_checknumber(L, 2)), static_cast<float>(luaL_checknumber(L, 3)), static_cast<float>(luaL_checknumber(L, 4)));
+		entt::registry& reg = *ctx.registry;
+		entt::entity e = reg.create();
+		reg.emplace<Transform>(e, Transform{pos, 0.0f});
+		reg.emplace<Pickup>(e, Pickup{id});
+		reg.emplace<Name>(e, Name{id});
+		reg.emplace<ScriptOwned>(e);
+		pushEntity(L, e);
+		return 1;
+	}
+
+	// iso.has_item(item_id) -> bool
+	int apiHasItem(lua_State* L)
+	{
+		ScriptContext& ctx = ctxOf(L);
+		lua_pushboolean(L, ctx.inventory && ctx.inventory->has(luaL_checkstring(L, 1)));
+		return 1;
+	}
+
+	// iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow [, alpha [, emissive]]]) -> entity
 	// a decorative box centred at x, y, z; walk-through, casts shadows unless glowing
 	int apiSpawnBox(lua_State* L)
 	{
@@ -271,6 +298,8 @@ namespace
 		box.size = checkVec3(L, 4);
 		box.color = glm::vec4(checkVec3(L, 7), 1.0f);
 		box.glow = lua_toboolean(L, 10) != 0;
+		box.color.a = static_cast<float>(luaL_optnumber(L, 11, 1.0)); // < 1: see-through, like glass
+		box.emissive = static_cast<float>(luaL_optnumber(L, 12, 0.0)); // > 0: glows on its own
 		entt::registry& reg = *ctx.registry;
 		entt::entity e = reg.create();
 		reg.emplace<Transform>(e, Transform{pos, 0.0f});
@@ -381,6 +410,8 @@ bool ScriptHost::load(const std::string& path)
 		{"spawn_glass", apiSpawnGlass},
 		{"spawn_box", apiSpawnBox},
 		{"spawn_mirror", apiSpawnMirror},
+		{"spawn_pickup", apiSpawnPickup},
+		{"has_item", apiHasItem},
 		{"destroy", apiDestroy},
 		{"player", apiPlayer},
 		{"play_sound", apiPlaySound},

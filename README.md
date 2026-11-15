@@ -13,7 +13,10 @@ A small isometric engine in C++17 and OpenGL 3.3.
 - **Atmosphere**: day/night cycle with blood moons, sky backdrops (atmosphere, galaxy, overcast),
   rain and lightning, wind-driven grass, fog, god rays, flickering torches, bloom, colour grading
 - **Gameplay**: character controller with gravity, jumping and per-axis collision, A* click-to-move
-  that climbs one block at a time
+  that climbs one block at a time; a Silent Hill style item screen (rotating 3D item icons,
+  Equip / Examine / Read), pickups with highlights, and a flashlight (a spotlight)
+- **Performance**: uncapped frame rate (VSync toggle), Low / Medium / High / Ultra presets and a
+  frame-time readout in the sidebar
 - **Engine**: ECS (EnTT), Lua 5.4 scripting, sound (miniaudio), skeletal animation (cgltf),
   hot reload of shaders and scripts, a built-in CPU profiler and optional Tracy integration
 
@@ -42,7 +45,10 @@ In VS Code: F5 builds and runs under the debugger, Ctrl+Shift+B only builds.
 | Middle drag | pan the camera | pan the camera |
 | Q / E | rotate the view | rotate the view |
 | Wheel, + / - | zoom | zoom |
-| T | follow the player on/off (on by default; panning turns it off) | |
+| T | follow the player on/off (on by default; panning turns it off) |
+| F / Enter | pick up the item in reach, confirm in menus |
+| I | item screen (pauses the game); Esc or I closes it |
+| L | flashlight on/off, once equipped | |
 | Tab | switch to editor | switch to play |
 | F2 | debug window | debug window |
 | Esc | quit | quit |
@@ -113,7 +119,9 @@ removed on reload. It can define `on_start()`, `on_update(dt)` and
 | `iso.set_tint(e, r, g, b)` | multiply a model's colours |
 | `iso.spawn_emitter(preset, x, y, z)` | continuous particles: `"fire"`, `"smoke"`, `"sparkle"` |
 | `iso.burst(preset, x, y, z)` | one-shot particles, e.g. `"dust"` |
-| `iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow])` | decorative box (props, roofs, signs); no collision, glowing boxes are unlit |
+| `iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow [, alpha [, emissive]]])` | decorative box (props, roofs, signs); no collision. `glow`: unlit; `alpha` < 1: see-through like glass (no shadow); `emissive` > 0: lit as usual plus its own glow, which blooms |
+| `iso.spawn_pickup(id, x, y, z)` | an item to pick up with F: `flashlight`, `rusty_key`, `torn_note` (defined in `src/inventory.cpp`); sends the event `pickup:<id>` |
+| `iso.has_item(id)` | whether the player carries the item |
 | `iso.spawn_glass(x, y, z [, opts])` | glass sphere; `opts`: `radius`, `ior`, `roughness`, `absorption`, `dispersion`, `tint = {r, g, b}`, `label` |
 | `iso.spawn_mirror(x, y, z, w, h [, yaw [, opts]])` | vertical mirror centred at x, y, z; `yaw` in degrees (0 faces +z, 90 faces +x); `opts`: `tarnish` (0..1), `tint = {r, g, b}`, `label`. Reflects blocks, grass and models; each visible mirror redraws the world once (up to 4) |
 | `iso.destroy(e)`, `iso.player()` | |

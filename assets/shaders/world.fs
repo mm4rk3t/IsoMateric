@@ -4,6 +4,7 @@ in vec3 vWorldPos;
 in vec3 vNormal;
 in vec4 vColor;
 in vec4 vLightSpacePos;
+in float vEmissive;
 
 out vec4 FragColor;
 layout (location = 1) out vec4 NormalOut; // for the outline pass
@@ -40,7 +41,7 @@ void main()
 				discard;
 		}
 	}
-	vec3 lit = shade(vColor.rgb, vWorldPos, vNormal, vLightSpacePos);
+	vec3 lit = shade(vColor.rgb, vWorldPos, vNormal, vLightSpacePos) + vColor.rgb * vEmissive;
 	NormalOut = vec4(normalize(vNormal) * 0.5 + 0.5, 1.0);
 	FragColor = vec4(applyFog(lit, vWorldPos), vColor.a);
 }

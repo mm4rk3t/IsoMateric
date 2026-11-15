@@ -4,6 +4,7 @@
 #include "audio.h"
 #include "camera.h"
 #include "input.h"
+#include "inventory.h"
 #include "level.h"
 #include "model.h"
 #include "player.h"
@@ -33,6 +34,7 @@ public:
 
 	void onFramebufferResize(int width, int height);
 	Input& input() { return inputState; }
+	bool onEscape(); // true if Esc closed a menu instead of quitting
 
 private:
 	enum class Mode { Play, Editor };
@@ -53,6 +55,10 @@ private:
 	void buildFrame(FrameData& frame);
 	void drawUi(float frameTime);
 	void drawLabels();
+	void drawHud();
+	void updateFlashlight();
+	void applyQuality(int level);
+	entt::entity nearestPickup() const;
 	void setDayNight(bool enabled);
 	void applyDayNight();
 	void updateLayout();
@@ -139,6 +145,18 @@ private:
 	float reloadTimer = 0.0f;
 	float fpsSmoothed = 0.0f;
 	float elapsed = 0.0f;
+
+	// items: Silent Hill style inventory, pickups in the world, a flashlight
+	Inventory inventory;
+	struct ImFont* fontTitle = nullptr;
+	struct ImFont* fontBody = nullptr;
+	std::string hudMessage;
+	float hudMessageTime = 0.0f;
+
+	// performance: vsync off by default so the fps shows what the engine can do
+	bool vsync = false;
+	int quality = -1; // -1 custom (level defaults), 0 low .. 3 ultra, see applyQuality
+	float frameMsSmoothed = 0.0f;
 	int windowW = 1, windowH = 1;
 	float sidebarWidth = 340.0f; // debug sidebar, window coordinates; resizable
 	float viewX = 0.0f;          // where the scene starts, window coordinates

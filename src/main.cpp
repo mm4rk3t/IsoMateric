@@ -39,7 +39,7 @@ int main(int argc, char** argv)
 		return 1;
 	}
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1);
+	glfwSwapInterval(0); // uncapped; the sidebar can turn vsync back on
 
 	if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress)))
 	{
@@ -60,7 +60,7 @@ int main(int argc, char** argv)
 			engineOf(w)->onFramebufferResize(width, height);
 		});
 		glfwSetKeyCallback(window, [](GLFWwindow* w, int key, int, int action, int) {
-			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS && !engineOf(w)->onEscape())
 				glfwSetWindowShouldClose(w, GLFW_TRUE);
 			engineOf(w)->input().onKey(key, action);
 		});

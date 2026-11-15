@@ -25,6 +25,9 @@ enum class Action
 	ToggleDebug,
 	ToggleEditor,
 	CycleCamera,
+	Interact,   // pick up, confirm in menus
+	Inventory,
+	Flashlight,
 	Count
 };
 

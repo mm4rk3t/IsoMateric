@@ -101,6 +101,28 @@ float sunShadow(vec4 lightSpacePos, vec3 n, vec3 l)
 	return shadow / 9.0;
 }
 
+// flashlight: one spotlight with a soft edge, a brighter core and a faint ring
+uniform bool spotOn;
+uniform vec3 spotPos;
+uniform vec3 spotDir;
+uniform vec3 spotColor;   // already multiplied by intensity
+uniform float spotRange;
+uniform float spotInner;  // cos of the core half angle
+uniform float spotOuter;  // cos of the edge half angle
+
+// how much flashlight reaches worldPos, and the direction towards the bulb
+float spotAmount(vec3 worldPos, out vec3 toLight)
+{
+	vec3 d = worldPos - spotPos;
+	float dist = length(d);
+	toLight = -d / max(dist, 1e-4);
+	float c = dot(-toLight, normalize(spotDir));
+	float cone = smoothstep(spotOuter, spotInner, c);
+	float ring = 1.0 + 0.25 * smoothstep(spotInner - 0.02, spotInner, c) * (1.0 - smoothstep(spotInner, spotInner + 0.02, c));
+	float falloff = clamp(1.0 - dist / spotRange, 0.0, 1.0);
+	return cone * ring * falloff * falloff;
+}
+
 vec3 shade(vec3 base, vec3 worldPos, vec3 normal, vec4 lightSpacePos)
 {
 	vec3 n = normalize(normal);
@@ -134,6 +156,15 @@ vec3 shade(vec3 base, vec3 worldPos, vec3 normal, vec4 lightSpacePos)
 				pointTint += lightColorIntensity[i].rgb * 0.35;
 			}
 		}
+		if (spotOn)
+		{
+			vec3 sl;
+			if (spotAmount(worldPos, sl) * max(dot(n, sl), 0.0) > 0.2)
+			{
+				points = 1.0;
+				pointTint += spotColor * 0.3;
+			}
+		}
 		float amount = max(lit, points * 0.8);
 		vec3 tone = mix(flatBase * (ambient + 0.35), flatBase * (ambient + sunColor * 0.9 + 0.1), lit) + flatBase * pointTint;
 		return mix(tone, tone * 0.35, hatch(amount + ambient * 0.5));
@@ -164,6 +195,20 @@ vec3 shade(vec3 base, vec3 worldPos, vec3 normal, vec4 lightSpacePos)
 		}
 		vec3 light = lightColorIntensity[i].rgb * lightColorIntensity[i].a * falloff;
 		color += (base * diffuse + specular) * light;
+	}
+
+	if (spotOn)
+	{
+		vec3 sl;
+		float amount = spotAmount(worldPos, sl);
+		if (amount > 0.0)
+		{
+			float diffuse = max(dot(n, sl), 0.0);
+			float specular = pow(max(dot(n, normalize(sl + v)), 0.0), shininess) * specAmount;
+			if (shadingStyle == 1)
+				diffuse = band(diffuse * amount) / max(amount, 1e-3);
+			color += (base * diffuse + specular) * spotColor * amount;
+		}
 	}
 	return color;
 }

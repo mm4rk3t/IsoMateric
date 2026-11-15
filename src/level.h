@@ -54,6 +54,14 @@ public:
 	bool solid(int x, int y, int z) const { return !inBounds(x, z) || isTrunk(x, z) || (y >= 0 && y < height(x, z)); }
 	int maxHeight() const;
 
+	// extra solid boxes (solid script boxes: walls, ceilings, furniture). Runtime only:
+	// rebuilt by the game every frame, never saved
+	struct Collider
+	{
+		glm::vec3 lo, hi;
+	};
+	std::vector<Collider> colliders;
+
 	int sizeX = 0, sizeZ = 0;
 	std::vector<int> heights;
 	std::vector<char> tiles;

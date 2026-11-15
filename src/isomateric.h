@@ -59,6 +59,36 @@ private:
 	void updateFlashlight();
 	void applyQuality(int level);
 	entt::entity nearestPickup() const;
+	entt::entity nearestMirror() const;
+
+	// camera: modes change through a short fade; zones and interactions can set or force them
+	void requestCameraMode(Camera::Mode m, const glm::vec3* face = nullptr, float pitch = 0.1f);
+	void updateCameraFade(float dt);
+	void updateCameraZones();
+	void rebuildColliders();
+	void startMirrorGaze(entt::entity mirror);
+	void endMirrorGaze();
+	void lockCamera(glm::vec3 dir, float pitch);
+	void unlockCamera();
+	struct CameraFade
+	{
+		bool active = false;
+		bool switched = false;
+		float t = 0.0f;
+		Camera::Mode target = Camera::Mode::Isometric;
+		bool hasFace = false;
+		glm::vec3 face{0.0f};
+		float pitch = 0.1f;
+	} camFade;
+	struct CameraLock // interaction: first person, no walking (looking into a mirror, a script)
+	{
+		bool active = false;
+		Camera::Mode previous = Camera::Mode::Isometric;
+		entt::entity mirror = entt::null;
+	} camLock;
+	entt::entity activeZone = entt::null;
+	Camera::Mode modeBeforeZone = Camera::Mode::Isometric;
+	bool zoneSwitched = false; // the zone changed the camera (and should change it back)
 	void setDayNight(bool enabled);
 	void applyDayNight();
 	void updateLayout();

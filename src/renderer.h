@@ -27,6 +27,8 @@ struct MeshDraw
 	const std::vector<glm::mat4>* globals;  // node matrices (non-skinned primitives)
 	const std::vector<glm::mat4>* joints;   // skinning palette
 	glm::vec4 tint;
+	bool reflectionOnly = false; // drawn only in mirror reflections
+	bool castShadow = true;
 };
 
 struct GlassDraw
@@ -55,6 +57,7 @@ struct FrameData
 	std::vector<Instance> particlesAlpha;    // sorted back-to-front by the renderer
 	std::vector<Instance> particlesAdditive;
 	std::vector<Instance> opaque;
+	std::vector<Instance> reflectionOnly; // opaque, but only drawn in mirror reflections
 	std::vector<Instance> transparent; // sorted back-to-front by the renderer
 	std::vector<Instance> overlay;     // unlit: hover highlight, path, light markers
 	glm::vec3 boundsMin{0.0f}, boundsMax{0.0f};

@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 
 #include <filesystem>
+#include <functional>
 #include <string>
 
 struct lua_State;
@@ -21,6 +22,8 @@ struct ScriptContext
 	ModelCache* models = nullptr;
 	entt::entity player = entt::null;
 	class Inventory* inventory = nullptr;
+	std::function<void(glm::vec3 dir, float pitch)> lockCamera; // first person, looking along dir
+	std::function<void()> unlockCamera;
 	const float* time = nullptr;
 	std::string assetsDir;
 };

@@ -702,6 +702,8 @@ void Renderer::drawOpaqueScene(const ViewParams& v, const Level& level, const Fr
 	world.set("cutawayFloor", settings.cutawayFloor);
 	world.set("cutawayDir", settings.cutawayDir);
 	draw(frame.opaque);
+	if (v.reflected)
+		draw(frame.reflectionOnly);
 
 	// grass, swaying in the wind
 	if (settings.grass)
@@ -714,7 +716,8 @@ void Renderer::drawOpaqueScene(const ViewParams& v, const Level& level, const Fr
 		setLighting(mesh, v, level, lightSpace, lightCount, settings);
 		mesh.set("albedo", 1);
 		for (const MeshDraw& m : frame.meshes)
-			drawMesh(mesh, m, true);
+			if (!m.reflectionOnly || v.reflected)
+				drawMesh(mesh, m, true);
 		glActiveTexture(GL_TEXTURE0);
 	}
 }
@@ -931,7 +934,8 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 			meshDepth.use();
 			meshDepth.set("lightSpace", lightSpace);
 			for (const MeshDraw& m : frame.meshes)
-				drawMesh(meshDepth, m, false);
+				if (m.castShadow)
+					drawMesh(meshDepth, m, false);
 			glEnable(GL_CULL_FACE);
 		}
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);

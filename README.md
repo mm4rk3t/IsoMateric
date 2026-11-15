@@ -49,7 +49,8 @@ In VS Code: F5 builds and runs under the debugger, Ctrl+Shift+B only builds.
 | Shift / Ctrl or C | sprint / crouch (hold); crouching is slower, lower, and cannot jump |
 | F / Enter | pick up the item in reach, confirm in menus |
 | I | item screen (pauses the game); Esc or I closes it |
-| L | flashlight on/off, once equipped | |
+| L | flashlight on/off, once equipped |
+| F at a mirror | look into it: first person, facing the glass; F, S or Esc steps back | |
 | Tab | switch to editor | switch to play |
 | F2 | debug window | debug window |
 | Esc | quit | quit |
@@ -109,7 +110,7 @@ cast shadows, and a sphere seen through another one shows the background, not th
 
 `assets/scripts/game.lua` runs on start and reloads when saved; entities a script spawned are
 removed on reload. It can define `on_start()`, `on_update(dt)` and
-`on_event(name, x, y, z)` (`"jump"`, `"land"`, `"respawn"`, `"blood_moon_start"`, `"blood_moon_end"`). The engine is the global `iso` table:
+`on_event(name, x, y, z)` (`"jump"`, `"land"`, `"respawn"`, `"blood_moon_start"`, `"blood_moon_end"`, `"pickup:<id>"`, `"mirror_look"` and `"mirror_leave"` with the mirror's position). The engine is the global `iso` table:
 
 | Function | |
 |---|---|
@@ -121,6 +122,10 @@ removed on reload. It can define `on_start()`, `on_update(dt)` and
 | `iso.spawn_emitter(preset, x, y, z)` | continuous particles: `"fire"`, `"smoke"`, `"sparkle"` |
 | `iso.burst(preset, x, y, z)` | one-shot particles, e.g. `"dust"` |
 | `iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow [, alpha [, emissive]]])` | decorative box (props, roofs, signs); no collision. `glow`: unlit; `alpha` < 1: see-through like glass (no shadow); `emissive` > 0: lit as usual plus its own glow, which blooms |
+| `iso.spawn_box(x, y, z, sx, sy, sz, r, g, b, opts)` | same, with an options table: `glow`, `alpha`, `emissive`, `solid` (blocks the player: walls, ceilings, furniture), `reflection_only` (only visible in mirrors) |
+| `iso.set_reflection_only(e, on)` | a box or model that only shows in mirrors (no shadow) |
+| `iso.camera_zone(x0, y0, z0, x1, y1, z1, mode [, {force = true}])` | while the player's feet are inside, the camera switches to `"first_person"` or `"isometric"` (with a short fade) and switches back on leaving; `force` stops the player switching away |
+| `iso.lock_camera(dx, dz [, pitch])`, `iso.unlock_camera()` | first person looking along (dx, dz), no walking, until unlocked (for interactions and scares) |
 | `iso.spawn_pickup(id, x, y, z)` | an item to pick up with F: `flashlight`, `rusty_key`, `torn_note` (defined in `src/inventory.cpp`); sends the event `pickup:<id>` |
 | `iso.has_item(id)` | whether the player carries the item |
 | `iso.spawn_glass(x, y, z [, opts])` | glass sphere; `opts`: `radius`, `ior`, `roughness`, `absorption`, `dispersion`, `tint = {r, g, b}`, `label` |

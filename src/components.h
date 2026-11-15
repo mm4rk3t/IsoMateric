@@ -25,6 +25,7 @@ struct MeshRenderer
 	float height = 1.0f;     // model is scaled to this many world units tall
 	float yawOffset = 0.0f;  // corrects the model's own forward axis
 	glm::vec4 tint{1.0f};
+	float squash = 1.0f;     // vertical scale on top of `height` (crouching)
 };
 
 struct Animator

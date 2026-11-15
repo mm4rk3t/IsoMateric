@@ -28,6 +28,8 @@ enum class Action
 	Interact,   // pick up, confirm in menus
 	Inventory,
 	Flashlight,
+	Sprint,
+	Crouch,
 	Count
 };
 

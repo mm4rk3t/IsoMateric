@@ -46,6 +46,7 @@ In VS Code: F5 builds and runs under the debugger, Ctrl+Shift+B only builds.
 | Q / E | rotate the view | rotate the view |
 | Wheel, + / - | zoom | zoom |
 | T | follow the player on/off (on by default; panning turns it off) |
+| Shift / Ctrl or C | sprint / crouch (hold); crouching is slower, lower, and cannot jump |
 | F / Enter | pick up the item in reach, confirm in menus |
 | I | item screen (pauses the game); Esc or I closes it |
 | L | flashlight on/off, once equipped | |

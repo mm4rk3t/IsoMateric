@@ -390,7 +390,10 @@ void IsoMateric::run()
 		// camera after movement and collision, so it never trails a frame behind
 		if (followPlayer || camera.isPerspective())
 			camera.focusGoal = player().position;
-		camera.eyeOffset = eyeHeight - player().size.y * 0.5f; // focus is the body centre
+		// first-person eye above the feet, eased down when crouching; focus is the body centre
+		const float eyeTarget = player().crouching ? eyeHeight * 0.6f : eyeHeight;
+		eyeNow += (eyeTarget - eyeNow) * (1.0f - std::exp(-dt * 12.0f));
+		camera.eyeOffset = eyeNow - player().size.y * 0.5f;
 		camera.update(dt);
 		if (camera.isPerspective())
 			camera.focus = camera.focusGoal; // no lag behind the player's head
@@ -582,6 +585,8 @@ void IsoMateric::fixedUpdate(float dt)
 	glm::vec2 move(f.x * fwd + r.x * side, f.z * fwd + r.z * side);
 	if (glm::dot(move, move) > 0.0f)
 		move = glm::normalize(move); // diagonal input is not faster
+	player().sprint = in.down(Action::Sprint);
+	player().crouch = in.down(Action::Crouch);
 	Player::Events e = player().update(dt, level, move, jumpRequested);
 	jumpRequested = false;
 	pendingEvents.jumped |= e.jumped;
@@ -594,6 +599,12 @@ void IsoMateric::syncPlayerEntity(float dt)
 	const Player& p = player();
 	Transform& t = registry.get<Transform>(playerEntity);
 	t.position = p.feet();
+	if (auto* mr = registry.try_get<MeshRenderer>(playerEntity))
+	{
+		// the model has no crouch animation: squat it a little instead
+		const float squashTarget = p.crouching ? 0.72f : 1.0f;
+		mr->squash += (squashTarget - mr->squash) * (1.0f - std::exp(-dt * 14.0f));
+	}
 	float target = std::atan2(p.facing.x, p.facing.y);
 	t.yaw += wrapAngle(target - t.yaw) * (1.0f - std::exp(-dt * 14.0f));
 
@@ -710,7 +721,8 @@ void IsoMateric::buildFrame(FrameData& frame)
 		glm::vec3 c = (m.boundsMin + m.boundsMax) * 0.5f;
 		glm::mat4 xf = glm::translate(glm::mat4(1.0f), t.position) *
 		               glm::rotate(glm::mat4(1.0f), t.yaw + mr.yawOffset, glm::vec3(0.0f, 1.0f, 0.0f)) *
-		               glm::scale(glm::mat4(1.0f), glm::vec3(scale)) * glm::translate(glm::mat4(1.0f), glm::vec3(-c.x, -m.boundsMin.y, -c.z));
+		               glm::scale(glm::mat4(1.0f), glm::vec3(scale, scale * mr.squash, scale)) *
+		               glm::translate(glm::mat4(1.0f), glm::vec3(-c.x, -m.boundsMin.y, -c.z));
 		frame.meshes.push_back({&m, xf, &anim.globals, &anim.joints, mr.tint});
 	}
 	if (!registry.all_of<MeshRenderer>(playerEntity) && !firstPerson)
@@ -1154,6 +1166,8 @@ void IsoMateric::drawUi(float frameTime)
 		ImGui::TextUnformatted(
 			"WASD / arrows   move\n"
 			"Space           jump\n"
+			"Shift           sprint (hold)\n"
+			"Ctrl / C        crouch (hold)\n"
 			"Left click      walk there (play) / raise column (editor)\n"
 			"Right click     lower column (editor)\n"
 			"Middle drag     pan camera\n"

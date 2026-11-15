@@ -20,6 +20,8 @@ Input::Input()
 	bind(Action::Interact,     {GLFW_KEY_F, GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER});
 	bind(Action::Inventory,    {GLFW_KEY_I, GLFW_KEY_BACKSPACE});
 	bind(Action::Flashlight,   {GLFW_KEY_L});
+	bind(Action::Sprint,       {GLFW_KEY_LEFT_SHIFT, GLFW_KEY_RIGHT_SHIFT});
+	bind(Action::Crouch,       {GLFW_KEY_LEFT_CONTROL, GLFW_KEY_C});
 }
 
 void Input::bind(Action action, std::initializer_list<int> keyList)

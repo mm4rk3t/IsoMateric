@@ -44,7 +44,7 @@ void Camera::look(float dYaw, float dPitch)
 
 glm::vec3 Camera::eye() const
 {
-	return focus + glm::vec3(0.0f, 0.35f, 0.0f); // focus is the player's centre; eyes sit higher
+	return focus + glm::vec3(0.0f, eyeOffset, 0.0f); // focus is the player's centre; eyes sit higher
 }
 
 void Camera::rotate(int steps)

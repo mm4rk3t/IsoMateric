@@ -65,6 +65,7 @@ public:
 	float snapUnits = 0.0f;
 
 	float fov = 70.0f;           // degrees, first person
+	float eyeOffset = 0.35f;     // first-person eye above the focus (the player's centre)
 
 private:
 	glm::vec3 eye() const;       // first-person eye position

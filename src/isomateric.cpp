@@ -385,6 +385,7 @@ void IsoMateric::run()
 		// camera after movement and collision, so it never trails a frame behind
 		if (followPlayer || camera.isPerspective())
 			camera.focusGoal = player().position;
+		camera.eyeOffset = eyeHeight - player().size.y * 0.5f; // focus is the body centre
 		camera.update(dt);
 		if (camera.isPerspective())
 			camera.focus = camera.focusGoal; // no lag behind the player's head
@@ -1175,6 +1176,7 @@ void IsoMateric::drawUi(float frameTime)
 		if (camera.isPerspective())
 		{
 			ImGui::SliderFloat("Field of view", &camera.fov, 40.0f, 110.0f, "%.0f deg");
+			ImGui::SliderFloat("Eye height", &eyeHeight, 0.6f, 2.2f, "%.2f blocks");
 			ImGui::TextDisabled("right or middle mouse drag to look");
 		}
 		int style = camera.style == Camera::Style::Isometric ? 0 : 1;

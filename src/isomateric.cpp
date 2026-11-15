@@ -616,6 +616,14 @@ void IsoMateric::buildFrame(FrameData& frame)
 	for (auto [entity, t, box] : registry.view<Transform, Box>().each())
 		(box.glow ? frame.overlay : frame.opaque).push_back({t.position, box.size, box.color});
 
+	// mirrors: yaw 0 faces +z, 90 degrees faces +x
+	for (auto [entity, t, m] : registry.view<Transform, Mirror>().each())
+	{
+		const glm::vec3 normal(std::sin(t.yaw), 0.0f, std::cos(t.yaw));
+		const glm::vec3 right(std::cos(t.yaw), 0.0f, -std::sin(t.yaw));
+		frame.mirrors.push_back({t.position, normal, right * (m.size.x * 0.5f), glm::vec3(0.0f, m.size.y * 0.5f, 0.0f), m.tint, m.tarnish});
+	}
+
 	// glass
 	for (auto [entity, t, g] : registry.view<Transform, Glass>().each())
 		frame.glass.push_back({t.position, g.radius, g.tint, g.ior, g.roughness, g.absorption, g.dispersion});
@@ -941,6 +949,8 @@ void IsoMateric::drawUi(float frameTime)
 	sidebarWidth = ImGui::GetWindowWidth();
 
 	ImGui::Text("%.0f fps | %d draw calls | %d instances", fpsSmoothed, renderer.drawCalls, renderer.instancesDrawn);
+	if (renderer.mirrorsDrawn > 0)
+		ImGui::Text("%d mirror reflection%s (each redraws the world)", renderer.mirrorsDrawn, renderer.mirrorsDrawn == 1 ? "" : "s");
 
 	int modeIndex = mode == Mode::Play ? 0 : 1;
 	ImGui::Text("Mode (Tab):");

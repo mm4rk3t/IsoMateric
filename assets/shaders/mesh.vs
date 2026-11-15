@@ -12,6 +12,7 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 lightSpace;
+uniform vec4 clipPlane; // mirror passes cut away what is behind the glass (GL_CLIP_DISTANCE0)
 uniform mat4 joints[MAX_JOINTS];
 uniform bool skinned;
 uniform float shadowNormalOffset;
@@ -33,5 +34,6 @@ void main()
 	vNormal = mat3(m) * aNormal; // fine for uniform scale, which is all the engine uses
 	vUV = aUV;
 	vLightSpacePos = lightSpace * vec4(world.xyz + normalize(vNormal) * shadowNormalOffset, 1.0);
+	gl_ClipDistance[0] = dot(vec4(world.xyz, 1.0), clipPlane);
 	gl_Position = projection * view * world;
 }

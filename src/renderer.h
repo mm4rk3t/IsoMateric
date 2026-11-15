@@ -36,8 +36,19 @@ struct GlassDraw
 	float ior, roughness, absorption, dispersion;
 };
 
+struct MirrorDraw
+{
+	glm::vec3 center;
+	glm::vec3 normal;  // the side that reflects
+	glm::vec3 right;   // half width along the surface
+	glm::vec3 up;      // half height
+	glm::vec3 tint;
+	float tarnish;
+};
+
 struct FrameData
 {
+	std::vector<MirrorDraw> mirrors;
 	std::vector<GlassDraw> glass; // drawn last, refracting everything before it
 	std::vector<MeshDraw> meshes;
 	std::vector<Instance> particlesAlpha;    // sorted back-to-front by the renderer
@@ -143,21 +154,41 @@ public:
 	int instancesDrawn = 0;
 
 	static constexpr int kShadowSize = 2048;
+	static constexpr int kMaxMirrors = 4; // each one renders the opaque world again
+	int mirrorsDrawn = 0;
 
 private:
+	// what a scene pass is drawn from: the camera, or the camera mirrored in a mirror
+	struct ViewParams
+	{
+		glm::mat4 view{1.0f}, projection{1.0f};
+		glm::vec3 toCamera{0.0f, 1.0f, 0.0f};
+		glm::vec3 position{0.0f};
+		bool perspective = false;
+		bool reflected = false;
+		glm::vec4 clipPlane{0.0f, 0.0f, 0.0f, 1.0f}; // keeps dot(clipPlane, (p, 1)) >= 0
+	};
+	static ViewParams viewOf(const Camera& camera);
+	void drawOpaqueScene(const ViewParams& v, const Level& level, const FrameData& frame, const glm::mat4& lightSpace, int lightCount,
+	                     const RenderSettings& settings);
+	void renderReflections(const Camera& camera, const Level& level, FrameData& frame, const glm::mat4& lightSpace, int lightCount,
+	                       const RenderSettings& settings, int targetW, int targetH);
+	void drawMirrors(const Camera& camera, bool pixelate);
 	void draw(const std::vector<Instance>& instances);
 	void draw(const Instance* instances, size_t count);
 	void grabFrame(bool pixelate);
 	void drawGlassSphere(const Camera& camera, const Level& level, const GlassDraw& g, int lightCount, bool pixelate,
 	                     const RenderSettings& settings);
 	void setWeather(Shader& shader, const RenderSettings& settings);
-	void drawSky(const Camera& camera, const RenderSettings& settings, bool pixelate);
+	// mirrorNormal: draw the sky as seen in a mirror with that normal
+	void drawSky(const Camera& camera, const RenderSettings& settings, int originX, int w, int h, const glm::vec3* mirrorNormal = nullptr);
+	void drawReflectedEffects(const ViewParams& v, const FrameData& frame);
 	void applyBloom(const RenderSettings& settings, bool pixelate);
 	void buildSphere();
-	void drawGrass(const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount, const RenderSettings& settings);
+	void drawGrass(const ViewParams& v, const Level& level, const glm::mat4& lightSpace, int lightCount, const RenderSettings& settings);
 	void rebuildGrass(const Level& level, const RenderSettings& settings);
 	void drawMesh(Shader& shader, const MeshDraw& mesh, bool materials);
-	void setLighting(Shader& shader, const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount,
+	void setLighting(Shader& shader, const ViewParams& v, const Level& level, const glm::mat4& lightSpace, int lightCount,
 	                 const RenderSettings& settings);
 	glm::mat4 sunMatrix(const Level& level, const FrameData& frame);
 	glm::vec3 flashedSun(const Level& level, const RenderSettings& settings) const;
@@ -167,7 +198,10 @@ private:
 
 	Shader world, depth, unlit, mesh, meshDepth, post;
 	GLuint sceneFbo = 0, sceneColor = 0, sceneDepth = 0, sceneNormal = 0, emptyVao = 0;
-	Shader grass;
+	Shader grass, mirror;
+	GLuint mirrorFbo[kMaxMirrors] = {}, mirrorTex[kMaxMirrors] = {}, mirrorDepth[kMaxMirrors] = {};
+	int mirrorW = 0, mirrorH = 0;
+	std::vector<MirrorDraw> activeMirrors; // the ones with a reflection this frame, same order as mirrorTex
 	GLuint grassVao = 0, grassMeshVbo = 0, grassInstanceVbo = 0;
 	GLsizei grassBlades = 0;
 	unsigned long long grassKey = 0; // hash of what the blades were built from

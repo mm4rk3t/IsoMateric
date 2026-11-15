@@ -87,7 +87,7 @@ private:
 	void setMouseLook(bool on);
 	Player::Events pendingEvents;
 	bool showDebug = true;
-	bool followPlayer = false;
+	bool followPlayer = true; // on by default; panning with the mouse turns it off, T toggles
 	bool autoReload = true;
 	bool pixelSnap = false;
 	bool showLabels = false;

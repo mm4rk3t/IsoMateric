@@ -84,20 +84,27 @@ Renderer::~Renderer()
 	glDeleteVertexArrays(1, &grassVao);
 	glDeleteBuffers(1, &grassMeshVbo);
 	glDeleteBuffers(1, &grassInstanceVbo);
+	glDeleteFramebuffers(kMaxMirrors, mirrorFbo);
+	glDeleteTextures(kMaxMirrors, mirrorTex);
+	glDeleteRenderbuffers(kMaxMirrors, mirrorDepth);
 	glDeleteFramebuffers(2, bloomFbo);
 	glDeleteTextures(2, bloomTex);
 }
 
-void Renderer::drawSky(const Camera& camera, const RenderSettings& s, bool pixelate)
+void Renderer::drawSky(const Camera& camera, const RenderSettings& s, int originX, int w, int h, const glm::vec3* mirrorNormal)
 {
+	// in a mirror every view direction is reflected; the shader rebuilds its up/right
+	// vectors with cross products, which flip sign under a reflection, so it is told
+	auto m = [&](const glm::vec3& d) { return mirrorNormal ? glm::reflect(d, *mirrorNormal) : d; };
 	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 	sky.use();
 	sky.set("mode", s.sky);
-	sky.set("viewOrigin", glm::vec3(static_cast<float>(pixelate ? 0 : viewX), 0.0f, 0.0f));
-	sky.set("viewSize", glm::vec3(static_cast<float>(pixelate ? sceneW : viewW), static_cast<float>(pixelate ? sceneH : height), 0.0f));
-	sky.set("camForward", camera.forward());
-	sky.set("camRight", camera.right());
+	sky.set("viewOrigin", glm::vec3(static_cast<float>(originX), 0.0f, 0.0f));
+	sky.set("viewSize", glm::vec3(static_cast<float>(w), static_cast<float>(h), 0.0f));
+	sky.set("camForward", m(camera.forward()));
+	sky.set("camRight", m(camera.right()));
+	sky.set("mirrored", mirrorNormal ? 1 : 0);
 	sky.set("time", s.time);
 	sky.set("focus", camera.focus);
 	sky.set("brightness", s.skyBrightness * (1.0f + s.lightningFlash * 1.5f));
@@ -111,8 +118,8 @@ void Renderer::drawSky(const Camera& camera, const RenderSettings& s, bool pixel
 	sky.set("realView", camera.isPerspective() ? 1 : 0);
 	const glm::vec3 viewForward = -camera.toCamera();
 	const glm::vec3 viewRight = glm::normalize(glm::cross(viewForward, glm::vec3(0.0f, 1.0f, 0.0f)));
-	sky.set("viewForward", viewForward);
-	sky.set("viewUp", glm::cross(viewRight, viewForward));
+	sky.set("viewForward", m(viewForward));
+	sky.set("viewUp", m(glm::cross(viewRight, viewForward)));
 	sky.set("tanHalfFov", std::tan(camera.fieldOfView() * 0.5f));
 	sky.set("wind", s.wind);
 	glBindVertexArray(emptyVao);
@@ -363,6 +370,7 @@ bool Renderer::init()
 	bloomBlur = Shader(kShaderDir + "post.vs", kShaderDir + "bloom_blur.fs");
 	bloomComposite = Shader(kShaderDir + "post.vs", kShaderDir + "bloom_composite.fs");
 	grass = Shader(kShaderDir + "grass.vs", kShaderDir + "world.fs");
+	mirror = Shader(kShaderDir + "mirror.vs", kShaderDir + "mirror.fs");
 	buildSphere();
 	glGenVertexArrays(1, &emptyVao);
 	if (!reloadShaders())
@@ -460,13 +468,13 @@ bool Renderer::init()
 bool Renderer::reloadShaders()
 {
 	bool ok = world.load() & depth.load() & unlit.load() & mesh.load() & meshDepth.load() & post.load() & glass.load() & sky.load() & bloomExtract.load() & bloomBlur.load() &
-	          bloomComposite.load() & grass.load();
+	          bloomComposite.load() & grass.load() & mirror.load();
 	glass.bindBlock("Lights", 0);
 	grass.bindBlock("Lights", 0);
 	world.bindBlock("Lights", 0);
 	mesh.bindBlock("Lights", 0);
 	return ok && world.valid() && depth.valid() && unlit.valid() && mesh.valid() && meshDepth.valid() && post.valid() && glass.valid() && sky.valid() &&
-	       bloomExtract.valid() && bloomBlur.valid() && bloomComposite.valid() && grass.valid();
+	       bloomExtract.valid() && bloomBlur.valid() && bloomComposite.valid() && grass.valid() && mirror.valid();
 }
 
 void Renderer::reloadShadersIfChanged()
@@ -483,6 +491,7 @@ void Renderer::reloadShadersIfChanged()
 		glass.bindBlock("Lights", 0);
 	if (grass.reloadIfChanged())
 		grass.bindBlock("Lights", 0);
+	mirror.reloadIfChanged();
 	sky.reloadIfChanged();
 	bloomExtract.reloadIfChanged();
 	bloomBlur.reloadIfChanged();
@@ -520,15 +529,27 @@ void Renderer::drawMesh(Shader& shader, const MeshDraw& d, bool materials)
 	}
 }
 
-void Renderer::setLighting(Shader& shader, const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount,
+Renderer::ViewParams Renderer::viewOf(const Camera& camera)
+{
+	ViewParams v;
+	v.view = camera.view();
+	v.projection = camera.projection();
+	v.toCamera = camera.toCamera();
+	v.position = camera.position();
+	v.perspective = camera.isPerspective();
+	return v;
+}
+
+void Renderer::setLighting(Shader& shader, const ViewParams& v, const Level& level, const glm::mat4& lightSpace, int lightCount,
                            const RenderSettings& settings)
 {
-	shader.set("view", camera.view());
-	shader.set("projection", camera.projection());
+	shader.set("view", v.view);
+	shader.set("projection", v.projection);
+	shader.set("clipPlane", v.clipPlane);
 	shader.set("lightSpace", lightSpace);
-	shader.set("viewDir", camera.toCamera());
-	shader.set("cameraPos", camera.position());
-	shader.set("perspective", camera.isPerspective() ? 1 : 0);
+	shader.set("viewDir", v.toCamera);
+	shader.set("cameraPos", v.position);
+	shader.set("perspective", v.perspective ? 1 : 0);
 	shader.set("sunDir", glm::normalize(level.sunDirection));
 	shader.set("sunColor", flashedSun(level, settings));
 	shader.set("ambient", level.ambient + settings.lightningFlash * 0.35f);
@@ -627,18 +648,18 @@ void Renderer::rebuildGrass(const Level& level, const RenderSettings& settings)
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-void Renderer::drawGrass(const Camera& camera, const Level& level, const glm::mat4& lightSpace, int lightCount, const RenderSettings& settings)
+void Renderer::drawGrass(const ViewParams& v, const Level& level, const glm::mat4& lightSpace, int lightCount, const RenderSettings& settings)
 {
 	rebuildGrass(level, settings);
 	if (grassBlades == 0)
 		return;
 	grass.use();
-	setLighting(grass, camera, level, lightSpace, lightCount, settings);
+	setLighting(grass, v, level, lightSpace, lightCount, settings);
 	grass.set("wind", settings.wind);
 	grass.set("windMax", 8.0f);
 	grass.set("pusher", settings.grassPusher);
 	grass.set("pushRadius", 0.55f);
-	grass.set("cutaway", settings.cutaway && !camera.isPerspective() ? 1 : 0);
+	grass.set("cutaway", settings.cutaway && !v.perspective && !v.reflected ? 1 : 0);
 	grass.set("cutawayCenter", settings.cutawayCenter);
 	grass.set("cutawayRadius", settings.cutawayRadius);
 	grass.set("cutawayFloor", settings.cutawayFloor);
@@ -655,6 +676,185 @@ void Renderer::drawGrass(const Camera& camera, const Level& level, const glm::ma
 	drawCalls++;
 	instancesDrawn += grassBlades;
 	world.use(); // callers continue with the world shader bound
+}
+
+void Renderer::drawOpaqueScene(const ViewParams& v, const Level& level, const FrameData& frame, const glm::mat4& lightSpace, int lightCount,
+                               const RenderSettings& settings)
+{
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, shadowTex);
+	world.use();
+	setLighting(world, v, level, lightSpace, lightCount, settings);
+	// nothing to see through in first person or in a reflection
+	world.set("cutaway", settings.cutaway && !v.perspective && !v.reflected ? 1 : 0);
+	world.set("cutawayCenter", settings.cutawayCenter);
+	world.set("cutawayRadius", settings.cutawayRadius);
+	world.set("cutawayFloor", settings.cutawayFloor);
+	world.set("cutawayDir", settings.cutawayDir);
+	draw(frame.opaque);
+
+	// grass, swaying in the wind
+	if (settings.grass)
+		drawGrass(v, level, lightSpace, lightCount, settings);
+
+	// skinned / static meshes
+	if (!frame.meshes.empty())
+	{
+		mesh.use();
+		setLighting(mesh, v, level, lightSpace, lightCount, settings);
+		mesh.set("albedo", 1);
+		for (const MeshDraw& m : frame.meshes)
+			drawMesh(mesh, m, true);
+		glActiveTexture(GL_TEXTURE0);
+	}
+}
+
+void Renderer::renderReflections(const Camera& camera, const Level& level, FrameData& frame, const glm::mat4& lightSpace, int lightCount,
+                                 const RenderSettings& settings, int targetW, int targetH)
+{
+	activeMirrors.clear();
+	mirrorsDrawn = 0;
+	const ViewParams cam = viewOf(camera);
+
+	// only mirrors that face the camera, nearest first, up to kMaxMirrors
+	std::vector<MirrorDraw> facing;
+	for (const MirrorDraw& m : frame.mirrors)
+	{
+		bool front = cam.perspective ? glm::dot(cam.position - m.center, m.normal) > 0.0f : glm::dot(cam.toCamera, m.normal) > 0.0f;
+		if (front)
+			facing.push_back(m);
+	}
+	std::sort(facing.begin(), facing.end(), [&](const MirrorDraw& a, const MirrorDraw& b) {
+		return glm::length(a.center - camera.focus) < glm::length(b.center - camera.focus);
+	});
+	if (facing.size() > static_cast<size_t>(kMaxMirrors))
+		facing.resize(kMaxMirrors);
+	if (facing.empty())
+		return;
+
+	if (!mirrorFbo[0] || targetW != mirrorW || targetH != mirrorH)
+	{
+		if (!mirrorFbo[0])
+		{
+			glGenFramebuffers(kMaxMirrors, mirrorFbo);
+			glGenTextures(kMaxMirrors, mirrorTex);
+			glGenRenderbuffers(kMaxMirrors, mirrorDepth);
+		}
+		mirrorW = targetW;
+		mirrorH = targetH;
+		for (int i = 0; i < kMaxMirrors; i++)
+		{
+			glBindTexture(GL_TEXTURE_2D, mirrorTex[i]);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, mirrorW, mirrorH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glBindRenderbuffer(GL_RENDERBUFFER, mirrorDepth[i]);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, mirrorW, mirrorH);
+			glBindFramebuffer(GL_FRAMEBUFFER, mirrorFbo[i]);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mirrorTex[i], 0);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, mirrorDepth[i]);
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+				LOG_ERROR("renderer: mirror framebuffer is incomplete (%dx%d)", mirrorW, mirrorH);
+		}
+		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+	}
+
+	glEnable(GL_CLIP_DISTANCE0);
+	glFrontFace(GL_CW); // the reflection flips the winding
+	for (size_t i = 0; i < facing.size(); i++)
+	{
+		const MirrorDraw& m = facing[i];
+		const glm::vec3 n = glm::normalize(m.normal);
+		const float d = glm::dot(n, m.center);
+		// reflection across the plane dot(n, p) = d
+		glm::mat4 r(1.0f);
+		for (int c = 0; c < 3; c++)
+			for (int row = 0; row < 3; row++)
+				r[c][row] -= 2.0f * n[c] * n[row];
+		r[3] = glm::vec4(2.0f * d * n, 1.0f);
+
+		ViewParams v = cam;
+		v.view = cam.view * r;
+		v.position = glm::vec3(r * glm::vec4(cam.position, 1.0f));
+		v.toCamera = glm::reflect(cam.toCamera, n);
+		v.reflected = true;
+		v.clipPlane = glm::vec4(n, -d - 0.01f); // drop whatever is behind the glass
+
+		glBindFramebuffer(GL_FRAMEBUFFER, mirrorFbo[i]);
+		glViewport(0, 0, mirrorW, mirrorH);
+		glClearColor(settings.clearColor.r, settings.clearColor.g, settings.clearColor.b, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		if (settings.sky != 0)
+		{
+			glFrontFace(GL_CCW);
+			drawSky(camera, settings, 0, mirrorW, mirrorH, &n);
+			glFrontFace(GL_CW);
+		}
+		drawOpaqueScene(v, level, frame, lightSpace, lightCount, settings);
+		drawReflectedEffects(v, frame);
+		activeMirrors.push_back(m);
+		mirrorsDrawn++;
+	}
+	glFrontFace(GL_CCW);
+	glDisable(GL_CLIP_DISTANCE0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::drawReflectedEffects(const ViewParams& v, const FrameData& frame)
+{
+	// glowing boxes, particles and rain, far to near as seen in the mirror
+	auto key = [&](const Instance& i) { return glm::dot(i.offset, v.toCamera); };
+	auto sorted = [&](const std::vector<Instance>& src) {
+		std::vector<Instance> out(src);
+		std::sort(out.begin(), out.end(), [&](const Instance& a, const Instance& b) { return key(a) < key(b); });
+		return out;
+	};
+	if (frame.overlay.empty() && frame.particlesAlpha.empty() && frame.particlesAdditive.empty())
+		return;
+	unlit.use();
+	unlit.set("view", v.view);
+	unlit.set("projection", v.projection);
+	unlit.set("clipPlane", v.clipPlane);
+	glEnable(GL_BLEND);
+	glDepthMask(GL_FALSE);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	draw(sorted(frame.overlay));
+	draw(sorted(frame.particlesAlpha));
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	draw(frame.particlesAdditive); // additive: order does not matter
+	glDepthMask(GL_TRUE);
+	glDisable(GL_BLEND);
+}
+
+void Renderer::drawMirrors(const Camera& camera, bool pixelate)
+{
+	if (activeMirrors.empty())
+		return;
+	mirror.use();
+	mirror.set("view", camera.view());
+	mirror.set("projection", camera.projection());
+	mirror.set("reflection", 5);
+	mirror.set("viewOrigin", glm::vec3(static_cast<float>(pixelate ? 0 : viewX), 0.0f, 0.0f));
+	mirror.set("viewSize", glm::vec3(static_cast<float>(mirrorW), static_cast<float>(mirrorH), 0.0f));
+	glBindVertexArray(emptyVao);
+	for (size_t i = 0; i < activeMirrors.size(); i++)
+	{
+		const MirrorDraw& m = activeMirrors[i];
+		mirror.set("center", m.center);
+		mirror.set("halfRight", m.right);
+		mirror.set("halfUp", m.up);
+		mirror.set("normal", glm::normalize(m.normal));
+		mirror.set("tint", m.tint);
+		mirror.set("tarnish", m.tarnish);
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_2D, mirrorTex[i]);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		drawCalls++;
+	}
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(0);
 }
 
 void Renderer::draw(const std::vector<Instance>& instances)
@@ -733,30 +933,6 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	raysMin = frame.boundsMin - glm::vec3(2.0f, 0.0f, 2.0f);
 	raysMax = frame.boundsMax + glm::vec3(2.0f, 3.0f, 2.0f); // some air above the tallest column
 	const bool pixelate = settings.pixelSize > 1 || settings.outlines || finalPass;
-	const int pixelSize = std::max(1, settings.pixelSize);
-	if (pixelate)
-	{
-		ensureSceneTarget(std::max(1, viewW / pixelSize), std::max(1, height / pixelSize));
-		glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
-		glViewport(0, 0, sceneW, sceneH);
-	}
-	else
-	{
-		glViewport(viewX, 0, viewW, height);
-	}
-	glClearColor(settings.clearColor.r, settings.clearColor.g, settings.clearColor.b, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	if (pixelate)
-	{
-		const GLfloat noNormal[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-		glClearBufferfv(GL_COLOR, 1, noNormal);
-	}
-	// only opaque geometry writes normals; everything else leaves attachment 1 alone
-	glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-	if (settings.sky != 0)
-		drawSky(camera, settings, pixelate);
-	glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-
 	// 2. lights uniform block
 	LightBlock block{};
 	int lightCount = std::min(static_cast<int>(level.lights.size()), Level::kMaxLights);
@@ -779,32 +955,38 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightBlock), &block);
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-	// 3. opaque world
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, shadowTex);
-	world.use();
-	setLighting(world, camera, level, lightSpace, lightCount, settings);
-	world.set("cutaway", settings.cutaway && !camera.isPerspective() ? 1 : 0); // nothing to see through in first person
-	world.set("cutawayCenter", settings.cutawayCenter);
-	world.set("cutawayRadius", settings.cutawayRadius);
-	world.set("cutawayFloor", settings.cutawayFloor);
-	world.set("cutawayDir", settings.cutawayDir);
-	draw(frame.opaque);
+	const int pixelSize = std::max(1, settings.pixelSize);
 
-	// 3a. grass, swaying in the wind
-	if (settings.grass)
-		drawGrass(camera, level, lightSpace, lightCount, settings);
+	// 2b. mirrors: the opaque world again, reflected, into one texture per mirror
+	renderReflections(camera, level, frame, lightSpace, lightCount, settings, pixelate ? std::max(1, viewW / pixelSize) : viewW,
+	                  pixelate ? std::max(1, height / pixelSize) : height);
 
-	// 3b. skinned / static meshes
-	if (!frame.meshes.empty())
+	if (pixelate)
 	{
-		mesh.use();
-		setLighting(mesh, camera, level, lightSpace, lightCount, settings);
-		mesh.set("albedo", 1);
-		for (const MeshDraw& m : frame.meshes)
-			drawMesh(mesh, m, true);
-		glActiveTexture(GL_TEXTURE0);
+		ensureSceneTarget(std::max(1, viewW / pixelSize), std::max(1, height / pixelSize));
+		glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
+		glViewport(0, 0, sceneW, sceneH);
 	}
+	else
+	{
+		glViewport(viewX, 0, viewW, height);
+	}
+	glClearColor(settings.clearColor.r, settings.clearColor.g, settings.clearColor.b, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	if (pixelate)
+	{
+		const GLfloat noNormal[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+		glClearBufferfv(GL_COLOR, 1, noNormal);
+	}
+	// only opaque geometry writes normals; everything else leaves attachment 1 alone
+	glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	if (settings.sky != 0)
+		drawSky(camera, settings, pixelate ? 0 : viewX, pixelate ? sceneW : viewW, pixelate ? sceneH : height);
+	glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+	// 3. opaque world: blocks, grass, models; then the mirrors showing their reflections
+	drawOpaqueScene(viewOf(camera), level, frame, lightSpace, lightCount, settings);
+	drawMirrors(camera, pixelate);
 
 	// 4. transparent world (faded occluders), far to near
 	if (!frame.transparent.empty())
@@ -854,6 +1036,7 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 			unlit.use();
 			unlit.set("view", view);
 			unlit.set("projection", projection);
+			unlit.set("clipPlane", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
 			glEnable(GL_BLEND);
 			glDepthMask(GL_FALSE);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

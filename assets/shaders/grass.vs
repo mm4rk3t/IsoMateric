@@ -11,6 +11,7 @@ layout (location = 4) in vec3 iColor;
 uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 lightSpace;
+uniform vec4 clipPlane; // mirror passes cut away what is behind the glass (GL_CLIP_DISTANCE0)
 uniform float shadowNormalOffset;
 uniform float time;
 uniform vec3 wind;         // (x, 0, z) units per second, the same wind that pushes the rain
@@ -74,5 +75,6 @@ void main()
 	vNormal = n;
 	vColor = vec4(iColor * mix(0.55, 1.15, t), 1.0);
 	vLightSpacePos = lightSpace * vec4(world + n * shadowNormalOffset, 1.0);
+	gl_ClipDistance[0] = dot(vec4(world, 1.0), clipPlane);
 	gl_Position = projection * view * vec4(world, 1.0);
 }

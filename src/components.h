@@ -65,4 +65,14 @@ struct Glass
 	float dispersion = 0.0f;  // per-channel IOR spread (rainbow fringes)
 };
 
+// A flat, vertical mirror centred on the entity's Transform, facing along its yaw
+// (yaw 0 faces +z, 90 degrees faces +x). Shows the opaque world (blocks, grass, models)
+// reflected; only the front is a mirror, so give it a backing in the script.
+struct Mirror
+{
+	glm::vec2 size{1.0f, 2.0f}; // width, height
+	glm::vec3 tint{0.92f, 0.95f, 1.0f};
+	float tarnish = 0.0f;       // 0 clean .. 1 old, blotchy silvering
+};
+
 #endif

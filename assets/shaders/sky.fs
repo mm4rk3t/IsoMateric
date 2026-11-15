@@ -33,7 +33,8 @@ uniform bool realView;       // perspective camera: use the actual view rays
 uniform vec3 viewForward;    // full 3D forward / up of the perspective camera
 uniform vec3 viewUp;
 uniform float tanHalfFov;
-uniform vec3 wind;           // (x, 0, z): the overcast deck drifts with it
+uniform vec3 wind;
+uniform bool mirrored;        // drawn inside a mirror: the cross products below flip sign           // (x, 0, z): the overcast deck drifts with it
 
 const float PI = 3.14159265;
 
@@ -247,6 +248,8 @@ void main()
 	float pitch = radians(6.0);
 	vec3 fwd = normalize(camForward * cos(pitch) + vec3(0.0, sin(pitch), 0.0));
 	vec3 up = normalize(cross(camRight, fwd));
+	if (mirrored)
+		up = -up;
 	float t = tan(radians(40.0));
 	vec2 pan = vec2(dot(focus, camRight), dot(focus, camForward));
 	vec3 d = normalize(fwd + ndc.x * t * aspect * camRight + ndc.y * t * up
@@ -254,6 +257,8 @@ void main()
 	if (realView)
 	{
 		vec3 r = normalize(cross(viewForward, viewUp));
+		if (mirrored)
+			r = -r;
 		d = normalize(viewForward + ndc.x * tanHalfFov * aspect * r + ndc.y * tanHalfFov * viewUp);
 	}
 

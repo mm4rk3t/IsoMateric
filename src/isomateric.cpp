@@ -120,6 +120,16 @@ bool IsoMateric::init()
 	onFramebufferResize(fbW, fbH);
 
 	audio.init(kAssets + "/sounds");
+
+	// typewriter font for the item screen and prompts (default font stays for the sidebar)
+	ImGuiIO& io = ImGui::GetIO();
+	io.Fonts->AddFontDefault();
+	const std::string font = kAssets + "/fonts/Cousine-Regular.ttf";
+	fontBody = io.Fonts->AddFontFromFileTTF(font.c_str(), 20.0f);
+	fontTitle = io.Fonts->AddFontFromFileTTF(font.c_str(), 34.0f);
+	if (!fontBody || !fontTitle)
+		LOG_WARN("ui: could not load %s, using the default font", font.c_str());
+
 	createPlayer();
 	loadLevel(levelPath);
 	if (level.sizeX == 0)
@@ -136,10 +146,107 @@ bool IsoMateric::init()
 	ctx.models = &models;
 	ctx.player = playerEntity;
 	ctx.time = &elapsed;
+	ctx.inventory = &inventory;
 	ctx.assetsDir = kAssets;
 	scripts = std::make_unique<ScriptHost>(ctx);
 	scripts->load(kAssets + "/" + level.script);
 	return true;
+}
+
+bool IsoMateric::onEscape()
+{
+	if (!inventory.open)
+		return false;
+	inventory.toggle();
+	return true;
+}
+
+entt::entity IsoMateric::nearestPickup() const
+{
+	const glm::vec3 feet = player().feet();
+	entt::entity best = entt::null;
+	float bestDist = 1.3f; // reach
+	for (auto [e, t, p] : registry.view<const Transform, const Pickup>().each())
+	{
+		glm::vec2 d(t.position.x - feet.x, t.position.z - feet.z);
+		float dist = glm::length(d);
+		if (dist < bestDist && std::abs(t.position.y - feet.y) < 1.6f)
+		{
+			best = e;
+			bestDist = dist;
+		}
+	}
+	return best;
+}
+
+void IsoMateric::updateFlashlight()
+{
+	RenderSettings& rs = renderSettings;
+	rs.spotOn = inventory.equipped == "flashlight" && inventory.flashlightOn;
+	if (!rs.spotOn)
+		return;
+	const Player& p = player();
+	glm::vec3 dir;
+	if (camera.mode() == Camera::Mode::FirstPerson)
+		dir = -camera.toCamera(); // where you look
+	else
+		dir = glm::normalize(glm::vec3(p.facing.x, -0.42f, p.facing.y)); // held at the chest, aimed ahead and down
+	rs.spotDir = glm::normalize(dir);
+	rs.spotPos = p.position + glm::vec3(0.0f, 0.2f, 0.0f) + glm::vec3(p.facing.x, 0.0f, p.facing.y) * 0.3f;
+	// a cheap bulb: tiny wobble in brightness
+	rs.spotIntensity = 2.4f * (0.96f + 0.04f * std::sin(elapsed * 23.0f) * std::sin(elapsed * 3.7f));
+}
+
+void IsoMateric::drawHud()
+{
+	const ImVec2 display = ImGui::GetIO().DisplaySize;
+	ImDrawList* dl = ImGui::GetForegroundDrawList();
+	ImFont* f = fontBody ? fontBody : ImGui::GetFont();
+	const float fs = fontBody ? fontBody->FontSize : 16.0f;
+	const float viewCenter = viewX + (display.x - viewX) * 0.5f;
+	auto centered = [&](float y, const std::string& t, ImU32 col) {
+		ImVec2 sz = f->CalcTextSizeA(fs, FLT_MAX, 0.0f, t.c_str());
+		ImVec2 p(viewCenter - sz.x * 0.5f, y);
+		dl->AddRectFilled(ImVec2(p.x - 12, p.y - 6), ImVec2(p.x + sz.x + 12, p.y + sz.y + 6), IM_COL32(0, 0, 0, 150));
+		dl->AddText(f, fs, p, col, t.c_str());
+	};
+
+	if (!inventory.open && mode == Mode::Play)
+	{
+		entt::entity e = nearestPickup();
+		if (e != entt::null)
+		{
+			const ItemDef* d = findItem(registry.get<Pickup>(e).item);
+			centered(display.y * 0.82f, std::string("[F]  Pick up ") + (d ? d->name : "item"), IM_COL32(215, 205, 185, 255));
+		}
+	}
+	if (hudMessageTime > 0.0f && !inventory.open)
+	{
+		hudMessageTime -= ImGui::GetIO().DeltaTime;
+		centered(display.y * 0.75f, hudMessage, IM_COL32(215, 205, 185, static_cast<int>(255 * std::min(1.0f, hudMessageTime))));
+	}
+	inventory.draw(glm::vec2(display.x, display.y), fontTitle, fontBody, static_cast<float>(glfwGetTime()));
+}
+
+void IsoMateric::applyQuality(int q)
+{
+	// graphics presets, to see what each feature costs; everything stays editable after.
+	//                     very low  low   medium  high  ultra
+	static const int   grassDensity[] = {0, 10, 16, 24, 48};
+	static const int   mirrors[]      = {0, 1, 2, 2, 4};
+	static const int   rainDrops[]    = {500, 1200, 2000, 2500, 4000};
+	static const int   raySteps[]     = {16, 16, 24, 32, 48};
+	RenderSettings& rs = renderSettings;
+	quality = q = std::clamp(q, 0, 4);
+	rs.shadows = q >= 1;
+	rs.grass = q >= 1;
+	rs.grassDensity = std::max(grassDensity[q], 4);
+	rs.bloom = q >= 3;
+	rs.bloomPasses = q >= 4 ? 3 : 2;
+	rs.godRays = q >= 4;
+	rs.godRaySteps = raySteps[q];
+	rs.maxMirrors = mirrors[q];
+	rain.maxDrops = rainDrops[q];
 }
 
 void IsoMateric::createPlayer()
@@ -215,7 +322,11 @@ void IsoMateric::run()
 		double frameTime = std::min(now - last, 0.25); // avoid a spiral after a stall
 		last = now;
 		float dt = static_cast<float>(frameTime);
-		elapsed += dt;
+		frameMsSmoothed = frameMsSmoothed * 0.95f + static_cast<float>(frameTime * 1000.0) * 0.05f;
+		// the item screen pauses the world (and its clock: grass, rain and fire freeze)
+		const bool paused = inventory.open;
+		const float worldDt = paused ? 0.0f : dt;
+		elapsed += worldDt;
 
 		glfwGetWindowSize(window, &windowW, &windowH);
 
@@ -235,7 +346,7 @@ void IsoMateric::run()
 
 		{
 			PROFILE_SCOPE("physics");
-			accumulator += frameTime;
+			accumulator += paused ? 0.0 : frameTime;
 			while (accumulator >= kFixedStep)
 			{
 				fixedUpdate(static_cast<float>(kFixedStep));
@@ -253,31 +364,36 @@ void IsoMateric::run()
 			if (pendingEvents.respawned)
 				scripts->event("respawn", feet);
 			pendingEvents = {};
-			scripts->update(dt);
+			scripts->update(worldDt);
 		}
 
 		{
 			PROFILE_SCOPE("animation");
-			syncPlayerEntity(dt);
-			updateAnimation(dt);
+			syncPlayerEntity(worldDt);
+			updateAnimation(worldDt);
 		}
 		if (dayNight.running)
-			advanceDayNight(dt);
+			advanceDayNight(worldDt);
 		{
 			PROFILE_SCOPE("particles");
-			updateParticles(registry, dt, rng);
+			updateParticles(registry, worldDt, rng);
 		}
 		{
 			PROFILE_SCOPE("weather");
-			updateWeather(dt);
+			updateWeather(worldDt);
 			for (Asteroid& a : asteroids)
-				a.angle += a.speed * dt;
+				a.angle += a.speed * worldDt;
 			updateSky();
+			updateFlashlight();
 		}
 
 		// camera after movement and collision, so it never trails a frame behind
 		if (followPlayer || camera.isPerspective())
 			camera.focusGoal = player().position;
+		// first-person eye above the feet, eased down when crouching; focus is the body centre
+		const float eyeTarget = player().crouching ? eyeHeight * 0.6f : eyeHeight;
+		eyeNow += (eyeTarget - eyeNow) * (1.0f - std::exp(-dt * 12.0f));
+		camera.eyeOffset = eyeNow - player().size.y * 0.5f;
 		camera.update(dt);
 		if (camera.isPerspective())
 			camera.focus = camera.focusGoal; // no lag behind the player's head
@@ -296,6 +412,7 @@ void IsoMateric::run()
 				drawUi(dt);
 			if (showLabels)
 				drawLabels();
+			drawHud();
 			ImGui::Render();
 			updateLayout(); // sidebar may have been resized or toggled
 		}
@@ -326,6 +443,48 @@ void IsoMateric::handleFrameInput(float dt)
 
 	if (in.pressed(Action::ToggleDebug))
 		showDebug = !showDebug;
+
+	// item screen: takes over the keys while open
+	if (inventory.open)
+	{
+		Inventory::Keys k;
+		k.left = in.pressed(Action::MoveLeft);
+		k.right = in.pressed(Action::MoveRight);
+		k.up = in.pressed(Action::MoveForward);
+		k.down = in.pressed(Action::MoveBack);
+		k.confirm = in.pressed(Action::Interact);
+		k.close = in.pressed(Action::Inventory);
+		if (inventory.update(k, dt))
+			audio.play("click", 0.5f);
+		return;
+	}
+	if (mode == Mode::Play && in.pressed(Action::Inventory))
+	{
+		inventory.toggle();
+		audio.play("click", 0.6f);
+		return;
+	}
+	if (mode == Mode::Play && in.pressed(Action::Interact))
+	{
+		entt::entity e = nearestPickup();
+		if (e != entt::null)
+		{
+			const std::string id = registry.get<Pickup>(e).item;
+			const ItemDef* d = findItem(id);
+			glm::vec3 at = registry.get<Transform>(e).position;
+			inventory.add(id);
+			registry.destroy(e);
+			hudMessage = "Picked up the " + (d ? d->name : id) + ".";
+			hudMessageTime = 3.0f;
+			audio.play("chime", 0.6f);
+			scripts->event(("pickup:" + id).c_str(), at);
+		}
+	}
+	if (in.pressed(Action::Flashlight) && inventory.equipped == "flashlight")
+	{
+		inventory.flashlightOn = !inventory.flashlightOn;
+		audio.play("click", 0.8f);
+	}
 	if (in.pressed(Action::ToggleFollow))
 		followPlayer = !followPlayer;
 	if (in.pressed(Action::ToggleEditor))
@@ -426,6 +585,8 @@ void IsoMateric::fixedUpdate(float dt)
 	glm::vec2 move(f.x * fwd + r.x * side, f.z * fwd + r.z * side);
 	if (glm::dot(move, move) > 0.0f)
 		move = glm::normalize(move); // diagonal input is not faster
+	player().sprint = in.down(Action::Sprint);
+	player().crouch = in.down(Action::Crouch);
 	Player::Events e = player().update(dt, level, move, jumpRequested);
 	jumpRequested = false;
 	pendingEvents.jumped |= e.jumped;
@@ -438,6 +599,12 @@ void IsoMateric::syncPlayerEntity(float dt)
 	const Player& p = player();
 	Transform& t = registry.get<Transform>(playerEntity);
 	t.position = p.feet();
+	if (auto* mr = registry.try_get<MeshRenderer>(playerEntity))
+	{
+		// the model has no crouch animation: squat it a little instead
+		const float squashTarget = p.crouching ? 0.72f : 1.0f;
+		mr->squash += (squashTarget - mr->squash) * (1.0f - std::exp(-dt * 14.0f));
+	}
 	float target = std::atan2(p.facing.x, p.facing.y);
 	t.yaw += wrapAngle(target - t.yaw) * (1.0f - std::exp(-dt * 14.0f));
 
@@ -554,7 +721,8 @@ void IsoMateric::buildFrame(FrameData& frame)
 		glm::vec3 c = (m.boundsMin + m.boundsMax) * 0.5f;
 		glm::mat4 xf = glm::translate(glm::mat4(1.0f), t.position) *
 		               glm::rotate(glm::mat4(1.0f), t.yaw + mr.yawOffset, glm::vec3(0.0f, 1.0f, 0.0f)) *
-		               glm::scale(glm::mat4(1.0f), glm::vec3(scale)) * glm::translate(glm::mat4(1.0f), glm::vec3(-c.x, -m.boundsMin.y, -c.z));
+		               glm::scale(glm::mat4(1.0f), glm::vec3(scale, scale * mr.squash, scale)) *
+		               glm::translate(glm::mat4(1.0f), glm::vec3(-c.x, -m.boundsMin.y, -c.z));
 		frame.meshes.push_back({&m, xf, &anim.globals, &anim.joints, mr.tint});
 	}
 	if (!registry.all_of<MeshRenderer>(playerEntity) && !firstPerson)
@@ -614,7 +782,32 @@ void IsoMateric::buildFrame(FrameData& frame)
 
 	// decorative boxes from scripts (props, roofs, signs); glowing ones are unlit
 	for (auto [entity, t, box] : registry.view<Transform, Box>().each())
-		(box.glow ? frame.overlay : frame.opaque).push_back({t.position, box.size, box.color});
+		(box.glow ? frame.overlay : box.color.a < 1.0f ? frame.transparent : frame.opaque).push_back({t.position, box.size, box.color, box.emissive});
+
+	// items lying around: small, bobbing, with a faint glint so they can be found
+	const entt::entity highlighted = mode == Mode::Play && !inventory.open ? nearestPickup() : entt::null;
+	for (auto [entity, t, pick] : registry.view<Transform, Pickup>().each())
+	{
+		const ItemDef* d = findItem(pick.item);
+		if (!d)
+			continue;
+		const float s = 0.38f;
+		const float phase = t.position.x * 1.3f + t.position.z * 0.7f;
+		const glm::vec3 base = t.position + glm::vec3(0.0f, 0.04f * std::sin(elapsed * 2.0f + phase), 0.0f);
+		for (const ItemBox& b : d->boxes)
+			frame.opaque.push_back({base + b.offset * s, glm::max(b.size * s, glm::vec3(0.012f)), glm::vec4(b.color, 1.0f)});
+		if (entity == highlighted)
+		{
+			// in reach: a warm, pulsing shell around every part
+			const float pulse = 0.35f + 0.25f * std::sin(static_cast<float>(glfwGetTime()) * 6.0f);
+			for (const ItemBox& b : d->boxes)
+				frame.particlesAdditive.push_back({base + b.offset * s, glm::max(b.size * s, glm::vec3(0.012f)) + glm::vec3(0.035f),
+				                                   glm::vec4(1.0f, 0.75f, 0.4f, pulse)});
+		}
+		float glint = std::pow(std::max(0.0f, std::sin(elapsed * 2.6f + phase)), 12.0f);
+		if (glint > 0.02f)
+			frame.particlesAdditive.push_back({base + glm::vec3(0.0f, 0.12f, 0.0f), glm::vec3(0.07f * glint + 0.02f), glm::vec4(1.0f, 0.95f, 0.8f, glint)});
+	}
 
 	// mirrors: yaw 0 faces +z, 90 degrees faces +x
 	for (auto [entity, t, m] : registry.view<Transform, Mirror>().each())
@@ -948,7 +1141,15 @@ void IsoMateric::drawUi(float frameTime)
 	ImGui::PopStyleVar();
 	sidebarWidth = ImGui::GetWindowWidth();
 
-	ImGui::Text("%.0f fps | %d draw calls | %d instances", fpsSmoothed, renderer.drawCalls, renderer.instancesDrawn);
+	ImGui::Text("%.0f fps (%.2f ms) | %d draw calls | %d instances", fpsSmoothed, frameMsSmoothed, renderer.drawCalls, renderer.instancesDrawn);
+	if (ImGui::Checkbox("VSync", &vsync))
+		glfwSwapInterval(vsync ? 1 : 0);
+	ImGui::SameLine();
+	const char* qualities[] = {"Very low", "Low", "Medium", "High", "Ultra"};
+	ImGui::SetNextItemWidth(110.0f);
+	int q = quality;
+	if (ImGui::Combo("Graphics", &q, qualities, 5))
+		applyQuality(q);
 	if (renderer.mirrorsDrawn > 0)
 		ImGui::Text("%d mirror reflection%s (each redraws the world)", renderer.mirrorsDrawn, renderer.mirrorsDrawn == 1 ? "" : "s");
 
@@ -965,6 +1166,8 @@ void IsoMateric::drawUi(float frameTime)
 		ImGui::TextUnformatted(
 			"WASD / arrows   move\n"
 			"Space           jump\n"
+			"Shift           sprint (hold)\n"
+			"Ctrl / C        crouch (hold)\n"
 			"Left click      walk there (play) / raise column (editor)\n"
 			"Right click     lower column (editor)\n"
 			"Middle drag     pan camera\n"
@@ -973,6 +1176,9 @@ void IsoMateric::drawUi(float frameTime)
 			"RMB / MMB drag  look around (first person)\n"
 			"Wheel, + / -    zoom\n"
 			"T               follow player\n"
+			"F / Enter       pick up, confirm\n"
+			"I               items (pauses the game)\n"
+			"L               flashlight on/off (when equipped)\n"
 			"F2              this window\n"
 			"Esc             quit");
 	}
@@ -989,6 +1195,7 @@ void IsoMateric::drawUi(float frameTime)
 		if (camera.isPerspective())
 		{
 			ImGui::SliderFloat("Field of view", &camera.fov, 40.0f, 110.0f, "%.0f deg");
+			ImGui::SliderFloat("Eye height", &eyeHeight, 0.6f, 2.2f, "%.2f blocks");
 			ImGui::TextDisabled("right or middle mouse drag to look");
 		}
 		int style = camera.style == Camera::Style::Isometric ? 0 : 1;

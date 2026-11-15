@@ -28,7 +28,19 @@ Player::Events Player::update(float dt, const Level& level, glm::vec2 moveDir, b
 {
 	Events events;
 	glm::vec2 delta(0.0f);
-	const float step = speed * dt;
+
+	// crouch: shorter body, feet stay where they are; no jumping while crouched
+	if (crouch != crouching)
+	{
+		const float h = crouch ? crouchHeight : standHeight;
+		position.y += (h - size.y) * 0.5f;
+		size.y = h;
+		crouching = crouch;
+	}
+	if (crouching)
+		jump = false;
+	const float factor = crouching ? crouchFactor : sprint ? sprintFactor : 1.0f;
+	const float step = speed * factor * dt;
 
 	if (glm::dot(moveDir, moveDir) > 0.0f)
 	{

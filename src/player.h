@@ -33,6 +33,15 @@ public:
 	float horizontalSpeed = 0.0f;          // actual speed this step, for animation
 	bool grounded = false;
 
+	// set by the game before update(): hold to sprint / crouch
+	bool sprint = false;
+	bool crouch = false;
+	bool crouching = false;    // current state (follows `crouch` from one step to the next)
+	float sprintFactor = 1.8f;
+	float crouchFactor = 0.45f;
+	float standHeight = 1.0f;
+	float crouchHeight = 0.6f;
+
 	float speed = 3.5f;       // world units per second
 	float gravity = 25.0f;
 	float jumpSpeed = 8.2f;   // clears one block (apex ~1.35)

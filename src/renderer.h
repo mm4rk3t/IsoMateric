@@ -17,6 +17,7 @@ struct Instance
 	glm::vec3 offset;
 	glm::vec3 scale;
 	glm::vec4 color; // alpha < 1 goes through the transparent pass
+	float emissive = 0.0f; // self-lit: adds color * emissive after lighting
 };
 
 struct MeshDraw
@@ -83,6 +84,18 @@ struct RenderSettings
 	float bloomThreshold = 0.72f;
 	float bloomIntensity = 0.7f;
 	int bloomPasses = 2;
+
+	// flashlight: one spotlight, no shadows
+	bool spotOn = false;
+	glm::vec3 spotPos{0.0f};
+	glm::vec3 spotDir{0.0f, -1.0f, 0.0f};
+	glm::vec3 spotColor{1.0f, 0.93f, 0.78f};
+	float spotIntensity = 2.4f;
+	float spotRange = 11.0f;
+	float spotInner = 0.93f; // cos of the bright core's half angle
+	float spotOuter = 0.82f; // cos of the edge's half angle
+
+	int maxMirrors = 4;     // mirror reflections drawn per frame (each redraws the world)
 
 	// lights and atmosphere
 	float lightFlicker = 0.0f;    // 0 steady .. 1 candle-like flicker of point lights

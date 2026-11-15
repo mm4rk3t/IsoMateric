@@ -400,6 +400,9 @@ bool Renderer::init()
 	glEnableVertexAttribArray(4);
 	glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Instance), reinterpret_cast<void*>(offsetof(Instance, color)));
 	glVertexAttribDivisor(4, 1);
+	glEnableVertexAttribArray(5);
+	glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(Instance), reinterpret_cast<void*>(offsetof(Instance, emissive)));
+	glVertexAttribDivisor(5, 1);
 	glBindVertexArray(0);
 
 	// grass: one blade strip, instanced per blade
@@ -557,6 +560,13 @@ void Renderer::setLighting(Shader& shader, const ViewParams& v, const Level& lev
 	shader.set("shadowsEnabled", settings.shadows ? 1 : 0);
 	shader.set("shadowMap", 0);
 	shader.set("shadowNormalOffset", shadowTexelWorld * 1.5f);
+	shader.set("spotOn", settings.spotOn ? 1 : 0);
+	shader.set("spotPos", settings.spotPos);
+	shader.set("spotDir", settings.spotDir);
+	shader.set("spotColor", settings.spotColor * settings.spotIntensity);
+	shader.set("spotRange", settings.spotRange);
+	shader.set("spotInner", settings.spotInner);
+	shader.set("spotOuter", settings.spotOuter);
 	setWeather(shader, settings);
 }
 
@@ -727,8 +737,9 @@ void Renderer::renderReflections(const Camera& camera, const Level& level, Frame
 	std::sort(facing.begin(), facing.end(), [&](const MirrorDraw& a, const MirrorDraw& b) {
 		return glm::length(a.center - camera.focus) < glm::length(b.center - camera.focus);
 	});
-	if (facing.size() > static_cast<size_t>(kMaxMirrors))
-		facing.resize(kMaxMirrors);
+	const size_t cap = static_cast<size_t>(std::clamp(settings.maxMirrors, 0, kMaxMirrors));
+	if (facing.size() > cap)
+		facing.resize(cap);
 	if (facing.empty())
 		return;
 
@@ -913,8 +924,7 @@ void Renderer::render(const Camera& camera, const Level& level, FrameData& frame
 		// (culling front faces instead leaks light under walls where they meet the floor)
 		depth.use();
 		depth.set("lightSpace", lightSpace);
-		draw(frame.opaque);
-		draw(frame.transparent);
+		draw(frame.opaque); // glass (frame.transparent) lets the light through
 		if (!frame.meshes.empty())
 		{
 			glDisable(GL_CULL_FACE); // character meshes are not always closed

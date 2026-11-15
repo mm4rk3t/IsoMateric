@@ -25,6 +25,7 @@ struct MeshRenderer
 	float height = 1.0f;     // model is scaled to this many world units tall
 	float yawOffset = 0.0f;  // corrects the model's own forward axis
 	glm::vec4 tint{1.0f};
+	float squash = 1.0f;     // vertical scale on top of `height` (crouching)
 };
 
 struct Animator
@@ -51,7 +52,8 @@ struct Box
 {
 	glm::vec3 size{1.0f};
 	glm::vec4 color{1.0f};
-	bool glow = false;
+	bool glow = false;     // unlit, full colour (drawn without lighting or shadows)
+	float emissive = 0.0f; // lit as usual, plus its own colour times this: glows and blooms
 };
 
 // A refractive glass sphere centred on Transform::position.
@@ -63,6 +65,12 @@ struct Glass
 	float roughness = 0.0f;   // 0 clear .. 1 frosted
 	float absorption = 0.0f;  // how fast the tint builds up with thickness
 	float dispersion = 0.0f;  // per-channel IOR spread (rainbow fringes)
+};
+
+// An item lying in the world, picked up with the interact key (see inventory.cpp).
+struct Pickup
+{
+	std::string item;
 };
 
 // A flat, vertical mirror centred on the entity's Transform, facing along its yaw

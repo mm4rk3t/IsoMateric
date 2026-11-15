@@ -3,8 +3,9 @@
 
 local flames = {}
 
-local function box(x, y, z, sx, sy, sz, r, g, b, glow)
-	return iso.spawn_box(x, y, z, sx, sy, sz, r, g, b, glow)
+-- glow: unlit; alpha < 1: see-through (glass); emissive > 0: lit, plus its own glow
+local function box(x, y, z, sx, sy, sz, r, g, b, glow, alpha, emissive)
+	return iso.spawn_box(x, y, z, sx, sy, sz, r, g, b, glow or false, alpha or 1, emissive or 0)
 end
 
 -- dark stone, matching the 'S' pillar tiles; shade < 1 for mouldings
@@ -93,6 +94,143 @@ local function standing_mirror(x, z, facing, tarnish)
 	iso.spawn_mirror(x + nx * 0.03, cy, z + nz * 0.03, w, h, yaw, { tarnish = tarnish, tint = { 0.9, 0.92, 0.95 } })
 end
 
+-- A Victorian greenhouse: brick base, iron frame, glass walls and a pitched glass roof.
+-- The floor and dirt beds are level tiles (x 8-16, z 38-46); the level file has the lamp.
+local function build_greenhouse()
+	local x0, x1, z0, z1 = 7.6, 16.4, 37.6, 46.4 -- outer walls
+	local cx, cz = (x0 + x1) * 0.5, (z0 + z1) * 0.5
+	local floor, base, eave, ridge = 0.5, 1.0, 3.0, 4.3
+	local iron = { 0.09, 0.09, 0.1 }
+	local glass = { 0.72, 0.86, 0.82 }
+	local door0, door1 = cx - 0.6, cx + 0.6 -- door in the +z wall
+	local function i(x, y, z, sx, sy, sz) box(x, y, z, sx, sy, sz, iron[1], iron[2], iron[3]) end
+	local function pane(x, y, z, sx, sy, sz) box(x, y, z, sx, sy, sz, glass[1], glass[2], glass[3], false, 0.22) end
+	local function brick(x, y, z, sx, sy, sz) box(x, y, z, sx, sy, sz, 0.38, 0.22, 0.17) end
+
+	-- brick base wall, with a gap for the door
+	brick(cx, (floor + base) * 0.5, z0, x1 - x0, base - floor, 0.22)
+	brick((x0 + door0) * 0.5, (floor + base) * 0.5, z1, door0 - x0, base - floor, 0.22)
+	brick((door1 + x1) * 0.5, (floor + base) * 0.5, z1, x1 - door1, base - floor, 0.22)
+	brick(x0, (floor + base) * 0.5, cz, 0.22, base - floor, z1 - z0)
+	brick(x1, (floor + base) * 0.5, cz, 0.22, base - floor, z1 - z0)
+
+	-- glass walls between the base and the eaves
+	local h = eave - base
+	pane(cx, base + h * 0.5, z0, x1 - x0, h, 0.04)
+	pane(x0, base + h * 0.5, cz, 0.04, h, z1 - z0)
+	pane(x1, base + h * 0.5, cz, 0.04, h, z1 - z0)
+	pane((x0 + door0) * 0.5, base + h * 0.5, z1, door0 - x0, h, 0.04)
+	pane((door1 + x1) * 0.5, base + h * 0.5, z1, x1 - door1, h, 0.04)
+	pane(cx, 2.6 + (eave - 2.6) * 0.5, z1, door1 - door0, eave - 2.6, 0.04) -- transom over the door
+
+	-- iron posts every ~1.5 units, a rail at mid height, the eave beam
+	for x = x0, x1 + 0.01, (x1 - x0) / 6 do
+		i(x, (floor + eave) * 0.5, z0, 0.09, eave - floor, 0.09)
+		if x < door0 - 0.05 or x > door1 + 0.05 then
+			i(x, (floor + eave) * 0.5, z1, 0.09, eave - floor, 0.09)
+		end
+	end
+	for z = z0, z1 + 0.01, (z1 - z0) / 6 do
+		i(x0, (floor + eave) * 0.5, z, 0.09, eave - floor, 0.09)
+		i(x1, (floor + eave) * 0.5, z, 0.09, eave - floor, 0.09)
+	end
+	i(door0, (floor + 2.6) * 0.5, z1, 0.09, 2.6 - floor, 0.09) -- door frame
+	i(door1, (floor + 2.6) * 0.5, z1, 0.09, 2.6 - floor, 0.09)
+	i(cx, 2.6, z1, door1 - door0, 0.08, 0.09)
+	for _, y in ipairs({ 2.0, eave }) do
+		i(cx, y, z0, x1 - x0, 0.07, 0.08)
+		i(x0, y, cz, 0.08, 0.07, z1 - z0)
+		i(x1, y, cz, 0.08, 0.07, z1 - z0)
+		i((x0 + door0) * 0.5, y, z1, door0 - x0, 0.07, 0.08)
+		i((door1 + x1) * 0.5, y, z1, x1 - door1, 0.07, 0.08)
+	end
+
+	-- the door, standing open against the wall outside
+	i(door0 - 0.02, (floor + 2.55) * 0.5, z1 + 0.62, 0.06, 2.05, 1.15)
+	pane(door0 - 0.02, (floor + 2.55) * 0.5 + 0.05, z1 + 0.62, 0.03, 1.8, 0.95)
+
+	-- pitched roof, ridge along x: stepped glass slabs and iron rafters on both slopes
+	local steps = 10
+	local run = (z1 - z0) * 0.5
+	for side = -1, 1, 2 do
+		for k = 0, steps - 1 do
+			local t = (k + 0.5) / steps
+			local z = cz + side * run * (1 - t)
+			local y = eave + (ridge - eave) * t
+			pane(cx, y, z, x1 - x0 + 0.2, 0.05, run / steps + 0.02)
+			for x = x0, x1 + 0.01, (x1 - x0) / 6 do
+				i(x, y + 0.04, z, 0.07, 0.07, run / steps + 0.02)
+			end
+		end
+		-- gable ends: glass triangles, stepped
+		for k = 0, steps - 1 do
+			local t = (k + 0.5) / steps
+			local hz = run * (1 - t)
+			local y = eave + (ridge - eave) * t
+			pane(x0, y - (ridge - eave) / steps * 0.5, cz, 0.04, (ridge - eave) / steps, hz * 2)
+			pane(x1, y - (ridge - eave) / steps * 0.5, cz, 0.04, (ridge - eave) / steps, hz * 2)
+		end
+	end
+	i(cx, ridge + 0.06, cz, x1 - x0 + 0.3, 0.1, 0.12) -- ridge beam
+	for _, x in ipairs({ x0, x1 }) do                -- finials
+		i(x, ridge + 0.35, cz, 0.08, 0.5, 0.08)
+		i(x, ridge + 0.62, cz, 0.16, 0.16, 0.16)
+	end
+
+	-- raised wooden beds along both long sides, crowded with plants, a few dead
+	local wood = { 0.36, 0.24, 0.15 }
+	for _, bx in ipairs({ 9.5, 15.5 }) do
+		box(bx, 0.72, 42.0, 1.8, 0.44, 6.8, wood[1], wood[2], wood[3])
+		box(bx, 0.95, 42.0, 1.6, 0.04, 6.6, 0.22, 0.15, 0.1) -- soil
+		for k = 0, 13 do
+			local pz = 39.0 + k * 0.46
+			for c = -1, 1, 2 do
+				local seed = math.sin(bx * 3.1 + k * 1.7 + c) * 0.5 + 0.5
+				local px = bx + c * 0.4 + (seed - 0.5) * 0.2
+				local hgt = 0.25 + seed * 0.55
+				if seed > 0.82 then -- dead stalk
+					box(px, 0.97 + hgt * 0.4, pz, 0.06, hgt * 0.8, 0.06, 0.32, 0.26, 0.16)
+				else
+					local g = 0.55 + seed * 0.5
+					box(px, 0.97 + hgt * 0.5, pz, 0.3 + seed * 0.15, hgt, 0.3, 0.16 * g, 0.36 * g, 0.14 * g)
+					if seed > 0.62 then -- flowers, dark red
+						box(px, 0.97 + hgt + 0.05, pz, 0.12, 0.1, 0.12, 0.5, 0.06, 0.1)
+					end
+				end
+			end
+		end
+		-- pale glowing mushrooms in the shade of the bed
+		for k = 0, 3 do
+			local pz = 39.4 + k * 1.7
+			box(bx + 0.95, 0.56, pz, 0.05, 0.12, 0.05, 0.75, 0.82, 0.7)
+			box(bx + 0.95, 0.64, pz, 0.14, 0.05, 0.14, 0.45, 0.9, 0.75, false, 1, 1.6)
+		end
+	end
+
+	-- potting table in the middle with pots; the flashlight lies on it
+	box(cx, 1.3, 40.6, 2.0, 0.08, 0.9, wood[1], wood[2], wood[3])
+	for _, lx in ipairs({ -0.9, 0.9 }) do
+		for _, lz in ipairs({ -0.38, 0.38 }) do
+			box(cx + lx, 0.9, 40.6 + lz, 0.08, 0.8, 0.08, wood[1] * 0.8, wood[2] * 0.8, wood[3] * 0.8)
+		end
+	end
+	for k, px in ipairs({ -0.65, 0.55 }) do
+		box(cx + px, 1.47, 40.5, 0.28, 0.26, 0.28, 0.6, 0.3, 0.18) -- terracotta
+		box(cx + px, 1.63 + k * 0.05, 40.5, 0.22, 0.1 + k * 0.1, 0.22, 0.2, 0.4, 0.15)
+	end
+	iso.spawn_pickup("flashlight", cx + 0.05, 1.42, 40.7)
+
+	-- watering can and a sack on the floor
+	box(cx + 2.2, 0.72, 45.2, 0.34, 0.4, 0.22, 0.32, 0.38, 0.36)
+	box(cx + 2.42, 0.85, 45.2, 0.2, 0.05, 0.05, 0.32, 0.38, 0.36)
+	box(cx - 2.2, 0.8, 39.0, 0.5, 0.6, 0.4, 0.55, 0.47, 0.32)
+
+	-- hanging lamp under the ridge (the level's light sits in it)
+	i(cx, 3.6, cz, 0.03, 1.3, 0.03)
+	i(cx, 2.95, cz, 0.3, 0.06, 0.3)
+	box(cx, 2.78, cz, 0.2, 0.26, 0.2, 1.0, 0.75, 0.45, false, 1, 2.2)
+end
+
 -- iron sconce under a torch light
 local function sconce(x, y, z, wall_z)
 	local dir = z < wall_z and 1 or -1 -- towards the pillar face
@@ -111,12 +249,24 @@ function on_start()
 	standing_mirror(27.5, 25.5, "z+", 0.6)
 
 	-- a torch at every point light: sconce, flame and a flickering light
+	build_greenhouse()
+
+	-- a torch at every point light on the arch: sconce, flame and a flickering light;
+	-- other lights (the greenhouse lamp) only flicker gently
 	for i = 1, iso.light_count() do
 		local x, y, z = iso.get_light(i)
-		flames[i] = { base = 1.2, phase = i * 1.7 }
-		sconce(x, y, z, 31.5)
-		iso.spawn_emitter("fire", x, y - 0.6, z)
+		if x > 28 and x < 37 and z > 29 and z < 34 then
+			flames[i] = { base = 1.2, phase = i * 1.7, amount = 1 }
+			sconce(x, y, z, 31.5)
+			iso.spawn_emitter("fire", x, y - 0.6, z)
+		else
+			flames[i] = { base = 1.1, phase = i * 1.7, amount = 0.3 }
+		end
 	end
+
+	-- things to find
+	iso.spawn_pickup("rusty_key", 33.6, 0.58, 34.2)  -- just past the arch
+	iso.spawn_pickup("torn_note", 33.9, 0.52, 21.6)  -- at the foot of the mirror
 
 	-- glass test row beside the path (x = 40), resting on the grass
 	local r = 0.4
@@ -138,8 +288,8 @@ end
 function on_update(dt)
 	-- flickering lights
 	local t = iso.time()
-	for i, f in ipairs(flames) do
-		local flicker = math.sin(t * 13 + f.phase) * 0.08 + math.sin(t * 7.3 + f.phase * 2) * 0.1
+	for i, f in pairs(flames) do
+		local flicker = (math.sin(t * 13 + f.phase) * 0.08 + math.sin(t * 7.3 + f.phase * 2) * 0.1) * f.amount
 		iso.set_light_intensity(i, f.base + flicker)
 	end
 end

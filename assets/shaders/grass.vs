@@ -23,6 +23,7 @@ out vec3 vWorldPos;
 out vec3 vNormal;
 out vec4 vColor;
 out vec4 vLightSpacePos;
+out float vEmissive;
 
 void main()
 {
@@ -71,6 +72,7 @@ void main()
 	// mostly-up normal: blades shade like the ground they grow from, not like paper
 	vec3 n = normalize(vec3(0.0, 1.0, 0.0) + vec3(facing.x, 0.0, facing.y) * 0.3 + vec3(bend.x, 0.0, bend.y) * 0.4 * t);
 
+	vEmissive = 0.0;
 	vWorldPos = world;
 	vNormal = n;
 	vColor = vec4(iColor * mix(0.55, 1.15, t), 1.0);

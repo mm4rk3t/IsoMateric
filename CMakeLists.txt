@@ -100,6 +100,7 @@ add_executable(IsoMateric
 	src/model.cpp
 	src/audio.cpp
 	src/scripting.cpp
+	src/inventory.cpp
 	src/profiler.cpp
 	src/stb_impl.cpp
 	src/cgltf_impl.cpp

@@ -178,6 +178,28 @@ static void testCannotJumpTwoBlocks()
 	CHECK(p.position.x < 3.6f);
 }
 
+static void testSprintAndCrouch()
+{
+	Level level = Level::flat(40, 3);
+	Player walk, run, sneak;
+	for (Player* p : {&walk, &run, &sneak})
+		p->placeAt(level, {2, 1});
+	run.sprint = true;
+	sneak.crouch = true;
+	stepFor(walk, level, 1.0f, {1.0f, 0.0f});
+	stepFor(run, level, 1.0f, {1.0f, 0.0f});
+	stepFor(sneak, level, 1.0f, {1.0f, 0.0f});
+	CHECK(run.position.x > walk.position.x + 1.5f);
+	CHECK(sneak.position.x < walk.position.x - 1.0f);
+	CHECK(sneak.crouching && sneak.size.y < walk.size.y);
+	CHECK(std::abs(sneak.feet().y - walk.feet().y) < 0.01f); // feet stay on the ground
+	stepFor(sneak, level, 0.5f, {0.0f, 0.0f}, true);          // no jumping while crouched
+	CHECK(sneak.grounded);
+	sneak.crouch = false;
+	stepFor(sneak, level, 0.1f, {0.0f, 0.0f});
+	CHECK(!sneak.crouching && std::abs(sneak.size.y - walk.size.y) < 1e-4f);
+}
+
 static void testFallIntoHoleRespawns()
 {
 	Level level = Level::flat(5, 1);
@@ -286,6 +308,7 @@ int main()
 	testGravityLands();
 	testJumpOntoBlock();
 	testCannotJumpTwoBlocks();
+	testSprintAndCrouch();
 	testFallIntoHoleRespawns();
 	testPathClimbsOneBlock();
 	testParticlesBurstAndCleanup();

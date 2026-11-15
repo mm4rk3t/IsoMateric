@@ -251,6 +251,7 @@ void main()
 	if (mirrored)
 		up = -up;
 	float t = tan(radians(40.0));
+	// screen-space pan nudges the virtual view a little in the isometric camera
 	vec2 pan = vec2(dot(focus, camRight), dot(focus, camForward));
 	vec3 d = normalize(fwd + ndc.x * t * aspect * camRight + ndc.y * t * up
 	                   + camRight * pan.x * 0.003 + up * pan.y * 0.002);
@@ -262,6 +263,9 @@ void main()
 		d = normalize(viewForward + ndc.x * tanHalfFov * aspect * r + ndc.y * tanHalfFov * viewUp);
 	}
 
-	vec3 col = mode == 2 ? galaxy(d) : mode == 3 ? overcast(d, pan) : atmosphere(d, pan);
+	// clouds shift with the world position, never with where the camera turns: the
+	// screen axes rotate with the view, which made the sky slide around in first person
+	vec2 worldPan = focus.xz;
+	vec3 col = mode == 2 ? galaxy(d) : mode == 3 ? overcast(d, worldPan) : atmosphere(d, worldPan);
 	FragColor = vec4(col * brightness, 1.0);
 }

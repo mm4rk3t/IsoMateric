@@ -27,7 +27,7 @@ public:
 	glm::vec3 feet() const { return position - glm::vec3(0.0f, size.y * 0.5f, 0.0f); }
 
 	glm::vec3 position{0.0f, 1.0f, 0.0f}; // centre of the body
-	glm::vec3 size{0.5f, 1.0f, 0.5f};     // full extents
+	glm::vec3 size{0.5f, 1.8f, 0.5f};     // full extents: an adult, the world is 1 block ~ 1 m
 	glm::vec3 velocity{0.0f};
 	glm::vec2 facing{0.0f, 1.0f};          // last horizontal move direction
 	float horizontalSpeed = 0.0f;          // actual speed this step, for animation
@@ -39,8 +39,8 @@ public:
 	bool crouching = false;    // current state (follows `crouch` from one step to the next)
 	float sprintFactor = 1.8f;
 	float crouchFactor = 0.45f;
-	float standHeight = 1.0f;
-	float crouchHeight = 0.6f;
+	float standHeight = 1.8f;
+	float crouchHeight = 1.1f;
 
 	float speed = 3.5f;       // world units per second
 	float gravity = 25.0f;

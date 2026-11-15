@@ -140,7 +140,7 @@ struct RenderSettings
 	float time = 0.0f;
 
 	bool cutaway = true;
-	float cutawayRadius = 0.9f;
+	float cutawayRadius = 1.2f;
 	glm::vec3 cutawayCenter{0.0f};
 	float cutawayFloor = 0.0f;
 	glm::vec3 cutawayDir{0.0f, 1.0f, 0.0f}; // from the player towards the camera

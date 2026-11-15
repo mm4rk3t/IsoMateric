@@ -15,7 +15,7 @@ A small isometric engine in C++17 and OpenGL 3.3.
 - **Gameplay**: character controller with gravity, jumping and per-axis collision, A* click-to-move
   that climbs one block at a time; a Silent Hill style item screen (rotating 3D item icons,
   Equip / Examine / Read), pickups with highlights, and a flashlight (a spotlight)
-- **Performance**: uncapped frame rate (VSync toggle), Low / Medium / High / Ultra presets and a
+- **Performance**: uncapped frame rate (VSync toggle), Very low / Low / Medium / High / Ultra presets and a
   frame-time readout in the sidebar
 - **Engine**: ECS (EnTT), Lua 5.4 scripting, sound (miniaudio), skeletal animation (cgltf),
   hot reload of shaders and scripts, a built-in CPU profiler and optional Tracy integration

@@ -158,7 +158,7 @@ private:
 
 	// performance: vsync off by default so the fps shows what the engine can do
 	bool vsync = false;
-	int quality = -1; // -1 custom (level defaults), 0 low .. 3 ultra, see applyQuality
+	int quality = -1; // -1 custom (level defaults), 0 very low .. 4 ultra, see applyQuality
 	float frameMsSmoothed = 0.0f;
 	int windowW = 1, windowH = 1;
 	float sidebarWidth = 340.0f; // debug sidebar, window coordinates; resizable

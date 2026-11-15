@@ -230,18 +230,23 @@ void IsoMateric::drawHud()
 
 void IsoMateric::applyQuality(int q)
 {
-	// graphics presets, to see what each feature costs; everything stays editable after
+	// graphics presets, to see what each feature costs; everything stays editable after.
+	//                     very low  low   medium  high  ultra
+	static const int   grassDensity[] = {0, 10, 16, 24, 48};
+	static const int   mirrors[]      = {0, 1, 2, 2, 4};
+	static const int   rainDrops[]    = {500, 1200, 2000, 2500, 4000};
+	static const int   raySteps[]     = {16, 16, 24, 32, 48};
 	RenderSettings& rs = renderSettings;
-	quality = q;
+	quality = q = std::clamp(q, 0, 4);
 	rs.shadows = q >= 1;
 	rs.grass = q >= 1;
-	rs.grassDensity = q == 1 ? 8 : q == 2 ? 24 : 48;
-	rs.bloom = q >= 2;
-	rs.bloomPasses = q >= 3 ? 3 : 2;
-	rs.godRays = q >= 3;
-	rs.godRaySteps = q >= 3 ? 48 : 24;
-	rs.maxMirrors = q == 0 ? 0 : q == 1 ? 1 : q == 2 ? 2 : 4;
-	rain.maxDrops = q == 0 ? 600 : q == 1 ? 1200 : q == 2 ? 2500 : 4000;
+	rs.grassDensity = std::max(grassDensity[q], 4);
+	rs.bloom = q >= 3;
+	rs.bloomPasses = q >= 4 ? 3 : 2;
+	rs.godRays = q >= 4;
+	rs.godRaySteps = raySteps[q];
+	rs.maxMirrors = mirrors[q];
+	rain.maxDrops = rainDrops[q];
 }
 
 void IsoMateric::createPlayer()
@@ -1128,10 +1133,10 @@ void IsoMateric::drawUi(float frameTime)
 	if (ImGui::Checkbox("VSync", &vsync))
 		glfwSwapInterval(vsync ? 1 : 0);
 	ImGui::SameLine();
-	const char* qualities[] = {"Low", "Medium", "High", "Ultra"};
+	const char* qualities[] = {"Very low", "Low", "Medium", "High", "Ultra"};
 	ImGui::SetNextItemWidth(110.0f);
 	int q = quality;
-	if (ImGui::Combo("Graphics", &q, qualities, 4))
+	if (ImGui::Combo("Graphics", &q, qualities, 5))
 		applyQuality(q);
 	if (renderer.mirrorsDrawn > 0)
 		ImGui::Text("%d mirror reflection%s (each redraws the world)", renderer.mirrorsDrawn, renderer.mirrorsDrawn == 1 ? "" : "s");

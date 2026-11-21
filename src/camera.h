@@ -32,6 +32,7 @@ public:
 	void setMode(Mode m);
 	Mode mode() const { return currentMode; }
 	void look(float dYaw, float dPitch); // mouse look in first person
+	void face(glm::vec3 dir, float pitch); // first person: look along dir (pitch > 0 looks down)
 
 	void setViewport(int width, int height);
 	void rotate(int steps);           // +1 / -1 quarter turns

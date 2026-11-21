@@ -42,6 +42,14 @@ void Camera::look(float dYaw, float dPitch)
 	lookPitch = glm::clamp(lookPitch + dPitch, -1.45f, 1.45f);
 }
 
+void Camera::face(glm::vec3 dir, float pitch)
+{
+	// forward is -toCamera = -(cos yaw, ., sin yaw)
+	if (dir.x * dir.x + dir.z * dir.z > 1e-6f)
+		yaw = yawGoal = std::atan2(-dir.z, -dir.x);
+	lookPitch = glm::clamp(pitch, -1.45f, 1.45f);
+}
+
 glm::vec3 Camera::eye() const
 {
 	return focus + glm::vec3(0.0f, eyeOffset, 0.0f); // focus is the player's centre; eyes sit higher

@@ -137,6 +137,17 @@ bool Player::moveAxis(const Level& level, int axis, float delta)
 				else
 					resolved = std::max(resolved, edge + 0.5f + half[axis] + kSkin);
 			}
+	// solid boxes: same push-out along the moving axis
+	for (const Level::Collider& c : level.colliders)
+	{
+		if (hi.x <= c.lo.x || lo.x >= c.hi.x || hi.y <= c.lo.y || lo.y >= c.hi.y || hi.z <= c.lo.z || lo.z >= c.hi.z)
+			continue;
+		hit = true;
+		if (delta > 0.0f)
+			resolved = std::min(resolved, c.lo[axis] - half[axis] - kSkin);
+		else
+			resolved = std::max(resolved, c.hi[axis] + half[axis] + kSkin);
+	}
 	if (hit)
 		position[axis] = resolved;
 	return hit;

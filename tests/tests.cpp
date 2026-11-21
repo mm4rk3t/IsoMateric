@@ -200,6 +200,37 @@ static void testSprintAndCrouch()
 	CHECK(!sneak.crouching && std::abs(sneak.size.y - walk.size.y) < 1e-4f);
 }
 
+static void testSolidBoxes()
+{
+	// a wall box stops the player
+	Level level = Level::flat(12, 3);
+	level.colliders.push_back({{5.5f, 0.5f, -0.5f}, {6.0f, 3.0f, 2.5f}});
+	Player p;
+	p.placeAt(level, {2, 1});
+	stepFor(p, level, 2.0f, {1.0f, 0.0f});
+	CHECK(p.position.x < 5.5f - p.size.x * 0.5f + 0.01f);
+
+	// a low box can be stood on after a jump
+	Level level2 = Level::flat(12, 3);
+	level2.colliders.push_back({{4.5f, 0.5f, -0.5f}, {11.5f, 1.0f, 2.5f}});
+	Player q;
+	q.placeAt(level2, {3, 1});
+	stepFor(q, level2, 1.2f, {1.0f, 0.0f}, true);
+	CHECK(q.grounded && std::abs(q.feet().y - 1.0f) < 0.01f);
+
+	// a ceiling at 1.5 above the floor: standing is blocked, crouching gets under
+	Level level3 = Level::flat(12, 3);
+	level3.colliders.push_back({{5.5f, 2.0f, -0.5f}, {11.5f, 3.0f, 2.5f}});
+	Player tall, low;
+	tall.placeAt(level3, {2, 1});
+	low.placeAt(level3, {2, 1});
+	low.crouch = true;
+	stepFor(tall, level3, 2.0f, {1.0f, 0.0f});
+	stepFor(low, level3, 3.0f, {1.0f, 0.0f});
+	CHECK(tall.position.x < 5.5f);
+	CHECK(low.position.x > 6.5f);
+}
+
 static void testFallIntoHoleRespawns()
 {
 	Level level = Level::flat(5, 1);
@@ -309,6 +340,7 @@ int main()
 	testJumpOntoBlock();
 	testCannotJumpTwoBlocks();
 	testSprintAndCrouch();
+	testSolidBoxes();
 	testFallIntoHoleRespawns();
 	testPathClimbsOneBlock();
 	testParticlesBurstAndCleanup();

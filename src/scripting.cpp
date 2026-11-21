@@ -289,6 +289,7 @@ namespace
 	}
 
 	// iso.spawn_box(x, y, z, sx, sy, sz, r, g, b [, glow [, alpha [, emissive]]]) -> entity
+	// or iso.spawn_box(x, y, z, sx, sy, sz, r, g, b, {glow, alpha, emissive, solid, reflection_only})
 	// a decorative box centred at x, y, z; walk-through, casts shadows unless glowing
 	int apiSpawnBox(lua_State* L)
 	{
@@ -297,9 +298,27 @@ namespace
 		glm::vec3 pos = checkVec3(L, 1);
 		box.size = checkVec3(L, 4);
 		box.color = glm::vec4(checkVec3(L, 7), 1.0f);
-		box.glow = lua_toboolean(L, 10) != 0;
-		box.color.a = static_cast<float>(luaL_optnumber(L, 11, 1.0)); // < 1: see-through, like glass
-		box.emissive = static_cast<float>(luaL_optnumber(L, 12, 0.0)); // > 0: glows on its own
+		if (lua_istable(L, 10))
+		{
+			// options table: {glow, alpha, emissive, solid, reflection_only}
+			auto flag = [&](const char* key) {
+				lua_getfield(L, 10, key);
+				bool v = lua_toboolean(L, -1) != 0;
+				lua_pop(L, 1);
+				return v;
+			};
+			box.glow = flag("glow");
+			box.solid = flag("solid");
+			box.reflectionOnly = flag("reflection_only");
+			box.color.a = optField(L, 10, "alpha", 1.0f);
+			box.emissive = optField(L, 10, "emissive", 0.0f);
+		}
+		else
+		{
+			box.glow = lua_toboolean(L, 10) != 0;
+			box.color.a = static_cast<float>(luaL_optnumber(L, 11, 1.0)); // < 1: see-through, like glass
+			box.emissive = static_cast<float>(luaL_optnumber(L, 12, 0.0)); // > 0: glows on its own
+		}
 		entt::registry& reg = *ctx.registry;
 		entt::entity e = reg.create();
 		reg.emplace<Transform>(e, Transform{pos, 0.0f});
@@ -307,6 +326,67 @@ namespace
 		reg.emplace<ScriptOwned>(e);
 		pushEntity(L, e);
 		return 1;
+	}
+
+	// iso.set_reflection_only(e, on): a box or model that only shows in mirrors
+	int apiSetReflectionOnly(lua_State* L)
+	{
+		entt::registry& reg = *ctxOf(L).registry;
+		entt::entity e = checkEntity(L, 1);
+		bool on = lua_toboolean(L, 2) != 0;
+		if (auto* b = reg.try_get<Box>(e))
+			b->reflectionOnly = on;
+		if (auto* mr = reg.try_get<MeshRenderer>(e))
+			mr->reflectionOnly = on;
+		return 0;
+	}
+
+	// iso.camera_zone(x0, y0, z0, x1, y1, z1, "first_person" | "isometric" [, {force = true}]) -> entity
+	// while the player's feet are inside, the camera switches to that mode (and back on leaving);
+	// with force the player cannot switch away
+	int apiCameraZone(lua_State* L)
+	{
+		ScriptContext& ctx = ctxOf(L);
+		glm::vec3 a = checkVec3(L, 1), b = checkVec3(L, 4);
+		std::string mode = luaL_checkstring(L, 7);
+		if (mode != "first_person" && mode != "isometric")
+			return luaL_error(L, "camera_zone mode must be \"first_person\" or \"isometric\"");
+		CameraZone z;
+		z.lo = glm::min(a, b);
+		z.hi = glm::max(a, b);
+		z.firstPerson = mode == "first_person";
+		if (lua_istable(L, 8))
+		{
+			lua_getfield(L, 8, "force");
+			z.force = lua_toboolean(L, -1) != 0;
+			lua_pop(L, 1);
+		}
+		entt::registry& reg = *ctx.registry;
+		entt::entity e = reg.create();
+		reg.emplace<CameraZone>(e, z);
+		reg.emplace<ScriptOwned>(e);
+		pushEntity(L, e);
+		return 1;
+	}
+
+	// iso.lock_camera(dir_x, dir_z [, pitch_degrees]): first person looking along (dir_x, dir_z),
+	// no walking, until iso.unlock_camera(); pitch > 0 looks down
+	int apiLockCamera(lua_State* L)
+	{
+		ScriptContext& ctx = ctxOf(L);
+		glm::vec3 dir(static_cast<float>(luaL_checknumber(L, 1)), 0.0f, static_cast<float>(luaL_checknumber(L, 2)));
+		float pitch = glm::radians(static_cast<float>(luaL_optnumber(L, 3, 5.0)));
+		if (ctx.lockCamera)
+			ctx.lockCamera(dir, pitch);
+		return 0;
+	}
+
+	int apiUnlockCamera(lua_State* L)
+	{
+		ScriptContext& ctx = ctxOf(L);
+		if (ctx.unlockCamera)
+			ctx.unlockCamera();
+		return 0;
 	}
 
 	int apiDestroy(lua_State* L)
@@ -411,6 +491,10 @@ bool ScriptHost::load(const std::string& path)
 		{"spawn_box", apiSpawnBox},
 		{"spawn_mirror", apiSpawnMirror},
 		{"spawn_pickup", apiSpawnPickup},
+		{"set_reflection_only", apiSetReflectionOnly},
+		{"camera_zone", apiCameraZone},
+		{"lock_camera", apiLockCamera},
+		{"unlock_camera", apiUnlockCamera},
 		{"has_item", apiHasItem},
 		{"destroy", apiDestroy},
 		{"player", apiPlayer},

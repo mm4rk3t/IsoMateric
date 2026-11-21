@@ -239,6 +239,114 @@ local function sconce(x, y, z, wall_z)
 	box(x, y - 0.66, z, 0.26, 0.12, 0.26, 0.15, 0.13, 0.12)
 end
 
+-- A stone crypt east of the path: a narrow corridor under a low ceiling that turns once
+-- and ends in a candle-lit chamber with an old mirror. Walls and ceiling are solid boxes;
+-- inside, the camera is forced to first person (too cramped to see from above).
+local CRYPT = { x = 44.0, z = 34.0, cell = 0.6 }
+local crypt_map = {      -- rows go +z, columns +x; # wall, . floor, D doorway
+	"############",
+	"D.......####",
+	"D.......####",
+	"######..####",
+	"######..####",
+	"######..####",
+	"##........##",
+	"##........##",
+	"##........##",
+	"##........##",
+	"##........##",
+	"##........##",
+	"############",
+}
+local CRYPT_MIRROR = { x = 47.6, y = 1.75, z = 41.17 }
+local ghost, ghost_timer, knocks = nil, nil, 0
+
+local function crypt_stone(x, y, z, sx, sy, sz, shade, solid)
+	local s = (shade or 1) * (0.94 + 0.08 * math.sin(x * 7.7 + z * 5.3))
+	return iso.spawn_box(x, y, z, sx, sy, sz, 0.36 * s, 0.35 * s, 0.37 * s, { solid = solid })
+end
+
+local function build_crypt()
+	local c = CRYPT.cell
+	local floor, ceil = 0.5, 2.8
+	local w, d = #crypt_map[1] * c, #crypt_map * c
+	-- walls: one solid box per run of # in a row
+	for r, line in ipairs(crypt_map) do
+		local z = CRYPT.z + (r - 0.5) * c
+		local start = nil
+		for col = 1, #line + 1 do
+			local ch = line:sub(col, col)
+			if ch == "#" and not start then start = col end
+			if ch ~= "#" and start then
+				local x0, x1 = CRYPT.x + (start - 1) * c, CRYPT.x + (col - 1) * c
+				crypt_stone((x0 + x1) * 0.5, (floor + ceil) * 0.5, z, x1 - x0, ceil - floor, c, 1, true)
+				start = nil
+			end
+		end
+	end
+	-- ceiling, then a stepped pitched roof and a cross above the door
+	crypt_stone(CRYPT.x + w * 0.5, ceil + 0.2, CRYPT.z + d * 0.5, w, 0.4, d, 0.85, true)
+	for k = 0, 4 do
+		crypt_stone(CRYPT.x + w * 0.5, ceil + 0.55 + k * 0.3, CRYPT.z + d * 0.5, w + 0.2, 0.3, d - k * 1.5, 0.75 + k * 0.03)
+	end
+	local doorZ = CRYPT.z + 1.5 * c + c * 0.5 -- centre of the two doorway cells
+	stone(CRYPT.x - 0.05, 4.7, doorZ, 0.12, 1.0, 0.12, 0.6)
+	stone(CRYPT.x - 0.05, 4.9, doorZ, 0.12, 0.12, 0.55, 0.6)
+	-- pointed arch around the doorway
+	for side = -1, 1, 2 do
+		stone(CRYPT.x - 0.08, 1.55, doorZ + side * 0.72, 0.2, 2.1, 0.25, 0.7)
+	end
+	for k = 0, 4 do
+		local h = 2.6 + k * 0.12
+		local half = 0.72 * (1 - k / 5)
+		stone(CRYPT.x - 0.08, h, doorZ, 0.2, 0.12, half * 2 + 0.25, 0.7)
+	end
+
+	-- the chamber: two sarcophagi, candles, a cracked mirror on the far wall
+	local function sarcophagus(x, z)
+		crypt_stone(x, floor + 0.4, z, 0.75, 0.8, 2.0, 0.9, true)
+		crypt_stone(x, floor + 0.85, z, 0.85, 0.1, 2.1, 1.05)
+		crypt_stone(x, floor + 0.93, z - 0.6, 0.35, 0.08, 0.35, 1.1) -- carved head
+	end
+	sarcophagus(45.65, 39.2)
+	sarcophagus(49.55, 39.2)
+	local function candle(x, y, z, h)
+		box(x, y + h * 0.5, z, 0.06, h, 0.06, 0.85, 0.8, 0.68)
+		box(x, y + h + 0.04, z, 0.04, 0.07, 0.04, 1.0, 0.75, 0.35, false, 1, 3.0)
+	end
+	for k, cz in ipairs({ 38.6, 39.4, 40.0 }) do
+		candle(45.65 + (k - 2) * 0.12, floor + 0.9, cz, 0.12 + k * 0.05)
+		candle(49.55 - (k - 2) * 0.12, floor + 0.9, cz + 0.2, 0.1 + k * 0.04)
+	end
+	for _, cx in ipairs({ 46.55, 48.65 }) do -- candelabra either side of the mirror
+		box(cx, floor + 0.6, 40.9, 0.06, 1.2, 0.06, 0.12, 0.11, 0.1)
+		box(cx, floor + 1.2, 40.9, 0.36, 0.04, 0.06, 0.12, 0.11, 0.1)
+		for _, dx in ipairs({ -0.16, 0, 0.16 }) do
+			candle(cx + dx, floor + 1.22, 40.9, 0.14)
+		end
+	end
+	-- the mirror, in a heavy dark frame
+	local m = CRYPT_MIRROR
+	box(m.x, m.y, m.z + 0.04, 1.3, 1.85, 0.06, 0.14, 0.09, 0.07)
+	for _, dx in ipairs({ -0.6, 0.6 }) do
+		box(m.x + dx, m.y, m.z - 0.02, 0.1, 1.75, 0.08, 0.2, 0.13, 0.09)
+	end
+	box(m.x, m.y + 0.82, m.z - 0.02, 1.3, 0.12, 0.08, 0.2, 0.13, 0.09)
+	box(m.x, m.y - 0.82, m.z - 0.02, 1.3, 0.12, 0.08, 0.2, 0.13, 0.09)
+	box(m.x, m.y + 1.0, m.z - 0.02, 0.4, 0.22, 0.08, 0.2, 0.13, 0.09)
+	iso.spawn_mirror(m.x, m.y, m.z, 1.0, 1.5, 180, { tarnish = 0.7, tint = { 0.82, 0.84, 0.86 }, label = "crypt mirror" })
+
+	-- bones and rubble along the corridor
+	for k = 0, 5 do
+		local bx = 45.0 + k * 0.55 + math.sin(k * 3.1) * 0.15
+		box(bx, floor + 0.03, 35.2 + math.sin(k * 1.7) * 0.25, 0.22, 0.05, 0.06, 0.72, 0.68, 0.58)
+	end
+	box(48.2, floor + 0.06, 36.8, 0.18, 0.14, 0.16, 0.7, 0.66, 0.56) -- a skull
+
+	-- inside, the camera is first person and stays that way
+	iso.camera_zone(CRYPT.x + 0.2, -1, CRYPT.z, CRYPT.x + w, 4, CRYPT.z + d, "first_person", { force = true })
+end
+
 function on_start()
 	iso.log("game.lua started")
 
@@ -248,8 +356,8 @@ function on_start()
 	standing_mirror(35.0, 22.5, "x-", 0.25)
 	standing_mirror(27.5, 25.5, "z+", 0.6)
 
-	-- a torch at every point light: sconce, flame and a flickering light
 	build_greenhouse()
+	build_crypt()
 
 	-- a torch at every point light on the arch: sconce, flame and a flickering light;
 	-- other lights (the greenhouse lamp) only flicker gently
@@ -286,6 +394,26 @@ function on_start()
 end
 
 function on_update(dt)
+	-- the crypt mirror: three knocks from behind the glass, then someone stands behind you
+	if ghost_timer then
+		ghost_timer = ghost_timer + dt
+		if knocks < 3 and ghost_timer > 1.2 + knocks * 0.45 then
+			knocks = knocks + 1
+			iso.play_sound("land", 0.9)
+		end
+		if not ghost and ghost_timer > 3.4 then
+			ghost = iso.spawn_model("models/CesiumMan.glb", CRYPT_MIRROR.x, 0.5, 38.3, 1.85)
+			iso.set_reflection_only(ghost, true)
+			iso.set_tint(ghost, 0.85, 0.8, 0.78) -- pale, so it shows in the dark
+			iso.play_animation(ghost, 0, 0)
+			iso.set_yaw(ghost, 0)
+		end
+		if ghost then -- it comes closer while you keep looking
+			local z = math.min(39.4, 38.3 + (ghost_timer - 3.4) * 0.12)
+			iso.set_position(ghost, CRYPT_MIRROR.x + 0.45, 0.5, z) -- just over your shoulder
+		end
+	end
+
 	-- flickering lights
 	local t = iso.time()
 	for i, f in pairs(flames) do
@@ -305,5 +433,15 @@ function on_event(name, x, y, z)
 	elseif name == "respawn" then
 		iso.play_sound("chime")
 		iso.burst("sparkle", x, y + 0.5, z)
+	elseif name == "mirror_look" then
+		if math.abs(x - CRYPT_MIRROR.x) < 0.5 and math.abs(z - CRYPT_MIRROR.z) < 0.5 then
+			ghost_timer, knocks = 0, 0
+		end
+	elseif name == "mirror_leave" then
+		if ghost then
+			iso.destroy(ghost) -- turning around: nobody there
+			iso.play_sound("denied", 0.5)
+		end
+		ghost, ghost_timer = nil, nil
 	end
 end

@@ -147,6 +147,8 @@ bool IsoMateric::init()
 	ctx.player = playerEntity;
 	ctx.time = &elapsed;
 	ctx.inventory = &inventory;
+	ctx.lockCamera = [this](glm::vec3 dir, float pitch) { lockCamera(dir, pitch); };
+	ctx.unlockCamera = [this]() { unlockCamera(); };
 	ctx.assetsDir = kAssets;
 	scripts = std::make_unique<ScriptHost>(ctx);
 	scripts->load(kAssets + "/" + level.script);
@@ -155,10 +157,172 @@ bool IsoMateric::init()
 
 bool IsoMateric::onEscape()
 {
-	if (!inventory.open)
-		return false;
-	inventory.toggle();
-	return true;
+	if (inventory.open)
+	{
+		inventory.toggle();
+		return true;
+	}
+	if (camLock.active && camLock.mirror != entt::null)
+	{
+		endMirrorGaze();
+		return true;
+	}
+	return false;
+}
+
+entt::entity IsoMateric::nearestMirror() const
+{
+	const glm::vec3 feet = player().feet();
+	entt::entity best = entt::null;
+	float bestDist = 1.7f;
+	for (auto [e, t, m] : registry.view<const Transform, const Mirror>().each())
+	{
+		if (!m.interactive)
+			continue;
+		const glm::vec3 n(std::sin(t.yaw), 0.0f, std::cos(t.yaw));
+		glm::vec3 d = feet - t.position;
+		d.y = 0.0f;
+		const float front = glm::dot(d, n);
+		const float side = std::abs(glm::dot(d, glm::vec3(n.z, 0.0f, -n.x)));
+		if (front > 0.2f && side < m.size.x * 0.5f + 0.4f && front < bestDist && std::abs(feet.y - (t.position.y - m.size.y * 0.5f)) < 1.5f)
+		{
+			best = e;
+			bestDist = front;
+		}
+	}
+	return best;
+}
+
+void IsoMateric::requestCameraMode(Camera::Mode m, const glm::vec3* face, float pitch)
+{
+	const Camera::Mode current = camFade.active ? camFade.target : camera.mode();
+	if (m == current && !face)
+		return;
+	if (m == current && camFade.active)
+	{
+		camFade.hasFace = face != nullptr; // already heading there: just update where to look
+		if (face)
+			camFade.face = *face;
+		camFade.pitch = pitch;
+		return;
+	}
+	camFade.active = true;
+	camFade.switched = false;
+	camFade.t = 0.0f;
+	camFade.target = m;
+	camFade.hasFace = face != nullptr;
+	if (face)
+		camFade.face = *face;
+	camFade.pitch = pitch;
+}
+
+void IsoMateric::updateCameraFade(float dt)
+{
+	// a quick dip to black hides the jump between the two cameras
+	constexpr float kHalf = 0.16f;
+	if (!camFade.active)
+		return;
+	camFade.t += dt;
+	if (!camFade.switched && camFade.t >= kHalf)
+	{
+		setMouseLook(false);
+		camera.setMode(camFade.target);
+		if (camFade.hasFace && camFade.target == Camera::Mode::FirstPerson)
+			camera.face(camFade.face, camFade.pitch);
+		camFade.switched = true;
+	}
+	if (camFade.t >= 2.0f * kHalf)
+		camFade.active = false;
+}
+
+void IsoMateric::updateCameraZones()
+{
+	if (camLock.active || mode != Mode::Play)
+		return;
+	const glm::vec3 feet = player().feet() + glm::vec3(0.0f, 0.1f, 0.0f);
+	entt::entity inside = entt::null;
+	for (auto [e, z] : registry.view<const CameraZone>().each())
+		if (glm::all(glm::greaterThanEqual(feet, z.lo)) && glm::all(glm::lessThanEqual(feet, z.hi)))
+			inside = e;
+	if (inside == activeZone)
+		return;
+
+	const Camera::Mode current = camFade.active ? camFade.target : camera.mode();
+	const glm::vec3 facing(player().facing.x, 0.0f, player().facing.y);
+	if (inside == entt::null)
+	{
+		// left the zone: give back the camera it took, unless the player picked one since
+		if (zoneSwitched && current != modeBeforeZone)
+			requestCameraMode(modeBeforeZone);
+		zoneSwitched = false;
+	}
+	else
+	{
+		const CameraZone& z = registry.get<CameraZone>(inside);
+		if (activeZone == entt::null)
+			modeBeforeZone = current; // from zone to zone keeps the original camera
+		const Camera::Mode want = z.firstPerson ? Camera::Mode::FirstPerson : Camera::Mode::Isometric;
+		if (want != current)
+		{
+			requestCameraMode(want, &facing, 0.05f);
+			zoneSwitched = true;
+		}
+	}
+	activeZone = inside;
+}
+
+void IsoMateric::rebuildColliders()
+{
+	level.colliders.clear();
+	for (auto [e, t, b] : registry.view<const Transform, const Box>().each())
+		if (b.solid)
+			level.colliders.push_back({t.position - b.size * 0.5f, t.position + b.size * 0.5f});
+}
+
+void IsoMateric::lockCamera(glm::vec3 dir, float pitch)
+{
+	if (!camLock.active)
+		camLock.previous = camFade.active ? camFade.target : camera.mode();
+	camLock.active = true;
+	camLock.mirror = entt::null;
+	requestCameraMode(Camera::Mode::FirstPerson, &dir, pitch);
+}
+
+void IsoMateric::unlockCamera()
+{
+	if (!camLock.active)
+		return;
+	camLock.active = false;
+	camLock.mirror = entt::null;
+	// a forced first-person zone keeps first person
+	const CameraZone* zone = registry.valid(activeZone) ? registry.try_get<CameraZone>(activeZone) : nullptr;
+	if (!(zone && zone->force && zone->firstPerson))
+		requestCameraMode(camLock.previous);
+}
+
+void IsoMateric::startMirrorGaze(entt::entity e)
+{
+	const Transform& t = registry.get<Transform>(e);
+	const glm::vec3 n(std::sin(t.yaw), 0.0f, std::cos(t.yaw));
+	Player& p = player();
+	// step in front of the glass and face it
+	p.position.x = t.position.x + n.x * 0.95f;
+	p.position.z = t.position.z + n.z * 0.95f;
+	p.velocity = glm::vec3(0.0f);
+	p.path.clear();
+	p.facing = glm::vec2(-n.x, -n.z);
+	const float eyeY = p.feet().y + eyeHeight;
+	const float pitch = -std::atan2(t.position.y - eyeY, 0.95f);
+	lockCamera(-n, pitch);
+	camLock.mirror = e;
+	scripts->event("mirror_look", t.position);
+}
+
+void IsoMateric::endMirrorGaze()
+{
+	glm::vec3 at = registry.valid(camLock.mirror) ? registry.get<Transform>(camLock.mirror).position : player().feet();
+	unlockCamera();
+	scripts->event("mirror_leave", at);
 }
 
 entt::entity IsoMateric::nearestPickup() const
@@ -213,12 +377,21 @@ void IsoMateric::drawHud()
 
 	if (!inventory.open && mode == Mode::Play)
 	{
-		entt::entity e = nearestPickup();
+		entt::entity e = camLock.active ? entt::null : nearestPickup();
 		if (e != entt::null)
 		{
 			const ItemDef* d = findItem(registry.get<Pickup>(e).item);
 			centered(display.y * 0.82f, std::string("[F]  Pick up ") + (d ? d->name : "item"), IM_COL32(215, 205, 185, 255));
 		}
+		else if (camLock.active && camLock.mirror != entt::null)
+			centered(display.y * 0.9f, "[F]  Step back", IM_COL32(150, 142, 128, 200));
+		else if (!camLock.active && nearestMirror() != entt::null)
+			centered(display.y * 0.82f, "[F]  Look into the mirror", IM_COL32(215, 205, 185, 255));
+	}
+	if (camFade.active)
+	{
+		const float a = 1.0f - std::abs(camFade.t - 0.16f) / 0.16f;
+		dl->AddRectFilled(ImVec2(viewX, 0.0f), ImVec2(display.x, display.y), IM_COL32(0, 0, 0, static_cast<int>(255 * std::clamp(a, 0.0f, 1.0f))));
 	}
 	if (hudMessageTime > 0.0f && !inventory.open)
 	{
@@ -344,6 +517,7 @@ void IsoMateric::run()
 			handleFrameInput(dt);
 		}
 
+		rebuildColliders();
 		{
 			PROFILE_SCOPE("physics");
 			accumulator += paused ? 0.0 : frameTime;
@@ -388,6 +562,8 @@ void IsoMateric::run()
 		}
 
 		// camera after movement and collision, so it never trails a frame behind
+		updateCameraZones();
+		updateCameraFade(dt);
 		if (followPlayer || camera.isPerspective())
 			camera.focusGoal = player().position;
 		// first-person eye above the feet, eased down when crouching; focus is the body centre
@@ -464,10 +640,23 @@ void IsoMateric::handleFrameInput(float dt)
 		audio.play("click", 0.6f);
 		return;
 	}
-	if (mode == Mode::Play && in.pressed(Action::Interact))
+	if (camLock.active)
+	{
+		// looking into a mirror: F, Backspace or a step away ends it
+		if (camLock.mirror != entt::null &&
+		    (in.pressed(Action::Interact) || in.pressed(Action::Inventory) || in.pressed(Action::MoveBack) || in.pressed(Action::MoveLeft) ||
+		     in.pressed(Action::MoveRight)))
+			endMirrorGaze();
+	}
+	else if (mode == Mode::Play && in.pressed(Action::Interact))
 	{
 		entt::entity e = nearestPickup();
-		if (e != entt::null)
+		if (e == entt::null)
+		{
+			if (entt::entity m = nearestMirror(); m != entt::null)
+				startMirrorGaze(m);
+		}
+		else
 		{
 			const std::string id = registry.get<Pickup>(e).item;
 			const ItemDef* d = findItem(id);
@@ -495,10 +684,21 @@ void IsoMateric::handleFrameInput(float dt)
 		camera.rotate(-1);
 	if (in.pressed(Action::Jump))
 		jumpRequested = true; // consumed by the next physics step
-	if (in.pressed(Action::CycleCamera))
+	if (in.pressed(Action::CycleCamera) && !camLock.active)
 	{
-		setMouseLook(false);
-		camera.setMode(camera.isPerspective() ? Camera::Mode::Isometric : Camera::Mode::FirstPerson);
+		const CameraZone* zone = registry.valid(activeZone) ? registry.try_get<CameraZone>(activeZone) : nullptr;
+		if (zone && zone->force)
+		{
+			hudMessage = zone->firstPerson ? "It is too cramped to step back." : "You need to see what is around you.";
+			hudMessageTime = 2.0f;
+		}
+		else
+		{
+			const Camera::Mode current = camFade.active ? camFade.target : camera.mode();
+			const glm::vec3 facing(player().facing.x, 0.0f, player().facing.y);
+			requestCameraMode(current == Camera::Mode::FirstPerson ? Camera::Mode::Isometric : Camera::Mode::FirstPerson, &facing);
+			zoneSwitched = false; // the player chose: leaving the zone keeps this camera
+		}
 	}
 
 	// first person: hold the right (play) or middle mouse to look. The look starts only when
@@ -585,6 +785,11 @@ void IsoMateric::fixedUpdate(float dt)
 	glm::vec2 move(f.x * fwd + r.x * side, f.z * fwd + r.z * side);
 	if (glm::dot(move, move) > 0.0f)
 		move = glm::normalize(move); // diagonal input is not faster
+	if (camLock.active)
+	{
+		move = glm::vec2(0.0f);
+		jumpRequested = false;
+	}
 	player().sprint = in.down(Action::Sprint);
 	player().crouch = in.down(Action::Crouch);
 	Player::Events e = player().update(dt, level, move, jumpRequested);
@@ -713,8 +918,8 @@ void IsoMateric::buildFrame(FrameData& frame)
 		const Animator& anim = meshes.get<Animator>(entity);
 		if (!mr.model || anim.globals.empty())
 			continue;
-		if (firstPerson && entity == playerEntity)
-			continue; // the camera is inside the head
+		// the camera is inside the head in first person: the body only shows in mirrors
+		const bool hiddenBody = firstPerson && entity == playerEntity;
 		const Model& m = *mr.model;
 		float h = m.boundsMax.y - m.boundsMin.y;
 		float scale = h > 0.0f ? mr.height / h : 1.0f;
@@ -723,7 +928,7 @@ void IsoMateric::buildFrame(FrameData& frame)
 		               glm::rotate(glm::mat4(1.0f), t.yaw + mr.yawOffset, glm::vec3(0.0f, 1.0f, 0.0f)) *
 		               glm::scale(glm::mat4(1.0f), glm::vec3(scale, scale * mr.squash, scale)) *
 		               glm::translate(glm::mat4(1.0f), glm::vec3(-c.x, -m.boundsMin.y, -c.z));
-		frame.meshes.push_back({&m, xf, &anim.globals, &anim.joints, mr.tint});
+		frame.meshes.push_back({&m, xf, &anim.globals, &anim.joints, mr.tint, hiddenBody || mr.reflectionOnly, !mr.reflectionOnly});
 	}
 	if (!registry.all_of<MeshRenderer>(playerEntity) && !firstPerson)
 		frame.opaque.push_back({player().position, player().size, glm::vec4(0.9f, 0.2f, 0.2f, 1.0f)});
@@ -782,7 +987,11 @@ void IsoMateric::buildFrame(FrameData& frame)
 
 	// decorative boxes from scripts (props, roofs, signs); glowing ones are unlit
 	for (auto [entity, t, box] : registry.view<Transform, Box>().each())
-		(box.glow ? frame.overlay : box.color.a < 1.0f ? frame.transparent : frame.opaque).push_back({t.position, box.size, box.color, box.emissive});
+		(box.reflectionOnly ? frame.reflectionOnly
+		 : box.glow         ? frame.overlay
+		 : box.color.a < 1.0f ? frame.transparent
+		                      : frame.opaque)
+			.push_back({t.position, box.size, box.color, box.emissive});
 
 	// items lying around: small, bobbing, with a faint glint so they can be found
 	const entt::entity highlighted = mode == Mode::Play && !inventory.open ? nearestPickup() : entt::null;
@@ -1179,6 +1388,7 @@ void IsoMateric::drawUi(float frameTime)
 			"F / Enter       pick up, confirm\n"
 			"I               items (pauses the game)\n"
 			"L               flashlight on/off (when equipped)\n"
+			"F at a mirror   look into it (F / S / Esc to step back)\n"
 			"F2              this window\n"
 			"Esc             quit");
 	}
@@ -1188,10 +1398,7 @@ void IsoMateric::drawUi(float frameTime)
 		int camMode = static_cast<int>(camera.mode());
 		const char* camModes[] = {"Isometric", "First person"};
 		if (ImGui::Combo("View (V)", &camMode, camModes, 2))
-		{
-			setMouseLook(false);
-			camera.setMode(static_cast<Camera::Mode>(camMode));
-		}
+			requestCameraMode(static_cast<Camera::Mode>(camMode));
 		if (camera.isPerspective())
 		{
 			ImGui::SliderFloat("Field of view", &camera.fov, 40.0f, 110.0f, "%.0f deg");

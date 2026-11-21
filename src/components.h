@@ -26,6 +26,7 @@ struct MeshRenderer
 	float yawOffset = 0.0f;  // corrects the model's own forward axis
 	glm::vec4 tint{1.0f};
 	float squash = 1.0f;     // vertical scale on top of `height` (crouching)
+	bool reflectionOnly = false; // only visible in mirrors (and casts no shadow)
 };
 
 struct Animator
@@ -54,6 +55,8 @@ struct Box
 	glm::vec4 color{1.0f};
 	bool glow = false;     // unlit, full colour (drawn without lighting or shadows)
 	float emissive = 0.0f; // lit as usual, plus its own colour times this: glows and blooms
+	bool solid = false;          // blocks the player (walls, ceilings, furniture)
+	bool reflectionOnly = false; // only visible in mirrors
 };
 
 // A refractive glass sphere centred on Transform::position.
@@ -81,6 +84,15 @@ struct Mirror
 	glm::vec2 size{1.0f, 2.0f}; // width, height
 	glm::vec3 tint{0.92f, 0.95f, 1.0f};
 	float tarnish = 0.0f;       // 0 clean .. 1 old, blotchy silvering
+	bool interactive = true;    // F in front of it: look into it (first person, locked)
+};
+
+// A box in the world that sets the camera while the player's feet are inside it.
+struct CameraZone
+{
+	glm::vec3 lo, hi;
+	bool firstPerson = true; // false: isometric
+	bool force = false;      // the player cannot switch away while inside
 };
 
 #endif

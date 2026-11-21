@@ -74,6 +74,8 @@ Moebius and Dreamy (bloom); each value stays editable afterwards.
 
 ## Camera
 
+![True isometric view: the player on a walkway between mirrors, a torch-lit gothic arch on the right](docs/true-isometric.png)
+
 Isometric is the default (true isometric or 2:1 dimetric). **V** toggles a first-person view for
 testing; drag with the right or middle mouse to look around. In isometric, walls between the
 camera and the player become see-through.
